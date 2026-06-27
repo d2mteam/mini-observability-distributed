@@ -33,21 +33,25 @@ public class Span {
     private final long startEpochMillis;
 
     @Getter
+    private final boolean sampled;
+
+    @Getter
     private long durationMillis;
 
     @Getter
     private Status status = Status.UNSET;
+
     @Getter
     private final Map<String, String> attributes = new HashMap<>();
 
     @Getter
     private boolean finished = false;
 
-    private TraceContextHolder.Scope scope;
+//    private TraceContextHolder.Scope scope;
 
     @Builder
     public Span(String traceId, String spanId, String parentSpanId,
-                String name, Kind kind, String serviceName, long startEpochMillis) {
+                String name, Kind kind, String serviceName, long startEpochMillis, boolean sampled) {
         this.traceId = traceId;
         this.spanId = spanId;
         this.parentSpanId = parentSpanId;
@@ -55,6 +59,7 @@ public class Span {
         this.kind = kind;
         this.serviceName = serviceName;
         this.startEpochMillis = startEpochMillis;
+        this.sampled = sampled;
     }
 
     // ---- mutator adapter dùng khi span đang chạy ----
@@ -79,16 +84,12 @@ public class Span {
     }
 
     // ---- chỉ Tracer gọi (package-private) ----
-    void attachScope(TraceContextHolder.Scope scope) { this.scope = scope; }
+//    void attachScope(TraceContextHolder.Scope scope) { this.scope = scope; }
 
     void end(long endEpochMillis) {
         if (finished) return;
         if (status == Status.UNSET) status = Status.OK;
         this.durationMillis = endEpochMillis - startEpochMillis;   // end - start
         this.finished = true;
-    }
-
-    void closeScope() {
-        if (scope != null) { scope.close(); scope = null; }
     }
 }

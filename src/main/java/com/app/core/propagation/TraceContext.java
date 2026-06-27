@@ -6,12 +6,12 @@ import lombok.Builder;
 
 @Builder(access = AccessLevel.PRIVATE)
 public record TraceContext(String traceId, String spanId, String parentSpanId, boolean sampled) {
-    public static TraceContext root(boolean sampled) {
+    public static TraceContext root(String traceId, boolean sampled) {
         return TraceContext.builder()
-                .traceId(IdGenerator.newTraceId())   // traceId MỚI
+                .traceId(traceId)
                 .spanId(IdGenerator.newSpanId())     // spanId mới
                 .parentSpanId(null)                  // root → không cha
-                .sampled(sampled)                       // chưa có Sampler → mặc định true
+                .sampled(sampled)
                 .build();
     }
 

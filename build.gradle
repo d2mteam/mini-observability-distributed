@@ -10,7 +10,8 @@ repositories {
 }
 
 dependencies {
-
+    // Source: https://mvnrepository.com/artifact/org.hdrhistogram/HdrHistogram
+    implementation 'org.hdrhistogram:HdrHistogram:2.2.2'
     // Logback (The standard implementation for SLF4J)
     implementation 'ch.qos.logback:logback-classic:1.5.6'
     compileOnly 'org.slf4j:slf4j-api:2.0.9'
