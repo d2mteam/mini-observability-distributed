@@ -10,7 +10,6 @@ public class Propagator {
     }
 
     public <C> void inject(TraceContext ctx, C carrier, Setter<C> setter) {
-
     }
 
     public <C> TraceContext extract(C carrier, Getter<C> getter) {

@@ -1,35 +1,9 @@
 package com.app.core.propagation;
 
-import com.app.internal.IdGenerator;
-import lombok.AccessLevel;
-import lombok.Builder;
-
-@Builder(access = AccessLevel.PRIVATE)
+/**
+ * Dữ liệu trace bất biến của MỘT span — chỉ chứa field, không tự sinh id, không tự "tiến hop".
+ * Mọi việc tạo/biến đổi context do {@link com.app.core.Tracer} kiểm soát (single owner);
+ * {@code Propagator} chỉ decode header thành context CHA rồi đưa cho Tracer mint span kế tiếp.
+ */
 public record TraceContext(String traceId, String spanId, String parentSpanId, boolean sampled) {
-    public static TraceContext root(String traceId, boolean sampled) {
-        return TraceContext.builder()
-                .traceId(traceId)
-                .spanId(IdGenerator.newSpanId())     // spanId mới
-                .parentSpanId(null)                  // root → không cha
-                .sampled(sampled)
-                .build();
-    }
-
-    public TraceContext child() {
-        return TraceContext.builder()
-                .traceId(this.traceId)               // GIỮ traceId
-                .spanId(IdGenerator.newSpanId())     // spanId MỚI
-                .parentSpanId(this.spanId)           // cha = spanId hiện tại của mình
-                .sampled(this.sampled)               // giữ quyết định sampling
-                .build();
-    }
-
-    public static TraceContext fromRemote(String traceId, String parentSpanId, boolean sampled) {
-        return TraceContext.builder()
-                .traceId(traceId)                    // GIỮ traceId từ service gọi
-                .spanId(IdGenerator.newSpanId())     // spanId MỚI cho chặng của mình
-                .parentSpanId(parentSpanId)          // cha = spanId của upstream
-                .sampled(sampled)                    // tôn trọng sampled từ upstream
-                .build();
-    }
 }

@@ -2,7 +2,6 @@ package com.app.internal;
 
 import java.security.SecureRandom;
 import java.util.HexFormat;
-import java.util.UUID;
 
 public class IdGenerator {
     private static final SecureRandom RANDOM = new SecureRandom();
