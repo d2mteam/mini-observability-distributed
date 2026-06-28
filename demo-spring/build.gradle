@@ -1,0 +1,18 @@
+plugins {
+    id 'java'
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // core tracing lib (root project)
+    implementation project(':')
+
+    // API của Spring/Servlet: chỉ cần lúc BIÊN DỊCH — host app đã có sẵn lúc chạy.
+    // compileOnly nên KHÔNG bundle spring-web/tomcat/jackson... vào module này.
+    compileOnly 'org.springframework:spring-web:6.1.14'        // OncePerRequestFilter, ClientHttpRequestInterceptor, HttpHeaders
+    compileOnly 'org.springframework:spring-context:6.1.14'    // EnvironmentAware (GenericFilterBean kế thừa gián tiếp)
+    compileOnly 'jakarta.servlet:jakarta.servlet-api:6.0.0'    // HttpServletRequest/Response, FilterChain
+}
