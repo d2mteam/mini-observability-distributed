@@ -1,5 +1,6 @@
 package com.app.demo;
 
+import com.app.core.Span;
 import com.app.core.Tracer;
 import com.app.core.propagation.Propagator;
 import com.app.core.propagation.TraceContext;
@@ -28,14 +29,15 @@ public class TracingFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res, FilterChain chain)
             throws ServletException, IOException {
         TraceContext parent = propagator.extract(req, HttpServletRequest::getHeader);   // Getter
-        try (var server = tracer.startServer(req.getMethod() + " " + req.getRequestURI(), parent)) {
-            try {
-                chain.doFilter(req, res);
-                server.span().tag("http.status_code", String.valueOf(res.getStatus()));
-            } catch (Exception e) {
-                server.span().error(e);
-                throw e;
-            }
+        Span span = tracer.nextSpan(parent).name(req.getMethod() + " " + req.getRequestURI()).kind(Span.Kind.SERVER);
+        try (var ws = tracer.withSpanInScope(span)) {
+            chain.doFilter(req, res);
+            span.tag("http.status_code", String.valueOf(res.getStatus()));
+        } catch (Exception e) {
+            span.error(e);
+            throw e;
+        } finally {
+            tracer.finishSpan(span);
         }
     }
 }

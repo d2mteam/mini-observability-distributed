@@ -1,6 +1,5 @@
 package com.app.core;
 
-import com.app.core.propagation.TraceContextHolder;
 import lombok.Builder;
 import lombok.Getter;
 
@@ -47,8 +46,6 @@ public class Span {
     @Getter
     private boolean finished = false;
 
-//    private TraceContextHolder.Scope scope;
-
     @Builder
     public Span(String traceId, String spanId, String parentSpanId,
                 String name, Kind kind, String serviceName, long startEpochMillis, boolean sampled) {
@@ -83,13 +80,14 @@ public class Span {
         return this;
     }
 
-    // ---- chỉ Tracer gọi (package-private) ----
-//    void attachScope(TraceContextHolder.Scope scope) { this.scope = scope; }
-
+    /**
+     * Chốt duration/status — chỉ chạm field của chính mình (Span là dữ liệu thuần, không record).
+     * Package-private: chỉ {@link Tracer} gọi qua {@link Tracer#finishSpan(Span)}. Idempotent.
+     */
     void end(long endEpochMillis) {
         if (finished) return;
         if (status == Status.UNSET) status = Status.OK;
-        this.durationMillis = endEpochMillis - startEpochMillis;   // end - start
+        this.durationMillis = endEpochMillis - startEpochMillis;
         this.finished = true;
     }
 }

@@ -27,12 +27,18 @@ public class TracingClientInterceptor implements ClientHttpRequestInterceptor {
     @Override
     public ClientHttpResponse intercept(HttpRequest request, byte[] body, ClientHttpRequestExecution exec)
             throws IOException {
-        try (var client = tracer.startSpan(request.getMethod() + " " + request.getURI(), Span.Kind.CLIENT)) {
-            // inject SAU startSpan: currentContext() chính là CLIENT span này → downstream parent về nó
+        Span span = tracer.nextSpan().name(request.getMethod() + " " + request.getURI()).kind(Span.Kind.CLIENT);
+        try (var ws = tracer.withSpanInScope(span)) {
+            // inject SAU khi scope: currentContext() chính là CLIENT span này → downstream parent về nó
             propagator.inject(tracer.currentContext(), request.getHeaders(), HttpHeaders::add);   // Setter
             ClientHttpResponse res = exec.execute(request, body);
-            client.span().tag("http.status_code", String.valueOf(res.getStatusCode().value()));
+            span.tag("http.status_code", String.valueOf(res.getStatusCode().value()));
             return res;
+        } catch (IOException | RuntimeException e) {
+            span.error(e);
+            throw e;
+        } finally {
+            tracer.finishSpan(span);
         }
     }
 }
