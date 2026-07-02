@@ -10,6 +10,8 @@ repositories {
 }
 
 dependencies {
+    // Source: https://mvnrepository.com/artifact/com.fasterxml.jackson.core/jackson-databind
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.22.0'
     // Source: https://mvnrepository.com/artifact/org.hdrhistogram/HdrHistogram
     implementation 'org.hdrhistogram:HdrHistogram:2.2.2'
     // Logback (The standard implementation for SLF4J)

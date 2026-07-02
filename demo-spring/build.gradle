@@ -16,4 +16,39 @@ dependencies {
     // OncePerRequestFilter, ClientHttpRequestInterceptor, HttpHeaders
     compileOnly 'org.springframework:spring-context:6.2.7'    // EnvironmentAware (GenericFilterBean kế thừa gián tiếp)
     compileOnly 'jakarta.servlet:jakarta.servlet-api:6.0.0'    // HttpServletRequest/Response, FilterChain
+
+    testImplementation platform('org.junit:junit-bom:5.10.0')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+    testImplementation 'org.springframework:spring-web:7.0.7'
+    testImplementation 'org.springframework:spring-context:7.0.7'
+    testImplementation 'org.springframework:spring-test:7.0.7'
+    testImplementation 'jakarta.servlet:jakarta.servlet-api:6.0.0'
+}
+
+test {
+    useJUnitPlatform {
+        excludeTags 'performance'
+    }
+}
+
+tasks.register('performanceTest', Test) {
+    description = 'Runs demo-spring tracing overhead tests.'
+    group = 'verification'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    shouldRunAfter test
+
+    useJUnitPlatform {
+        includeTags 'performance'
+    }
+
+    systemProperty 'perf.iterations', System.getProperty('perf.iterations', '30000')
+    systemProperty 'perf.warmupIterations', System.getProperty('perf.warmupIterations', '5000')
+
+    testLogging {
+        events 'passed', 'failed', 'skipped'
+        showStandardStreams = true
+    }
 }

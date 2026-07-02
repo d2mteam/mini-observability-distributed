@@ -1,0 +1,56 @@
+package com.core.demo;
+
+import com.core.metrics.MetricsRegistry;
+import com.core.tracing.Span;
+import com.core.tracing.Tracer;
+import com.core.tracing.propagation.Propagator;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpRequest;
+import org.springframework.http.client.ClientHttpRequestExecution;
+import org.springframework.http.client.ClientHttpRequestInterceptor;
+import org.springframework.http.client.ClientHttpResponse;
+
+import java.io.IOException;
+
+/**
+ * OUTBOUND: một điểm cắm feed CẢ HAI — Tracer (CLIENT span + inject) và MetricsRegistry
+ * (onRequestStart/End + onDestinationResult cho consecutive-failure theo host đích).
+ */
+public class TracingClientInterceptor implements ClientHttpRequestInterceptor {
+    private final Tracer tracer;
+    private final Propagator propagator;
+    private final MetricsRegistry metrics;
+
+    public TracingClientInterceptor(Tracer tracer, Propagator propagator, MetricsRegistry metrics) {
+        this.tracer = tracer;
+        this.propagator = propagator;
+        this.metrics = metrics;
+    }
+
+    @Override
+    public ClientHttpResponse intercept(HttpRequest request, byte[] body, ClientHttpRequestExecution exec)
+            throws IOException {
+        String endpoint = request.getMethod() + " " + request.getURI();
+        String destination = request.getURI().getHost();                 // peer cho consecutive-failure
+        Span span = tracer.nextSpan().name(endpoint).kind(Span.Kind.CLIENT);
+
+        metrics.onRequestStart(endpoint);
+        long startNanos = System.nanoTime();
+        boolean error = false;
+        try (var ws = tracer.withSpanInScope(span)) {
+            propagator.inject(tracer.currentContext(), request.getHeaders(), HttpHeaders::add);   // Setter
+            ClientHttpResponse res = exec.execute(request, body);
+            span.tag("http.status_code", String.valueOf(res.getStatusCode().value()));
+            return res;
+        } catch (IOException | RuntimeException e) {
+            error = true;
+            span.error(e);
+            throw e;
+        } finally {
+            long durationMs = (System.nanoTime() - startNanos) / 1_000_000;
+            tracer.finishSpan(span);
+            metrics.onRequestEnd(endpoint, durationMs, error, body != null ? body.length : 0);
+            metrics.onDestinationResult(destination, !error);
+        }
+    }
+}
