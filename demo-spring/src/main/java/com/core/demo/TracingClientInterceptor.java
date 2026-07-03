@@ -12,10 +12,6 @@ import org.springframework.http.client.ClientHttpResponse;
 
 import java.io.IOException;
 
-/**
- * OUTBOUND: một điểm cắm feed CẢ HAI — Tracer (CLIENT span + inject) và MetricsRegistry
- * (onRequestStart/End + onDestinationResult cho consecutive-failure theo host đích).
- */
 public class TracingClientInterceptor implements ClientHttpRequestInterceptor {
     private final Tracer tracer;
     private final Propagator propagator;
@@ -31,14 +27,14 @@ public class TracingClientInterceptor implements ClientHttpRequestInterceptor {
     public ClientHttpResponse intercept(HttpRequest request, byte[] body, ClientHttpRequestExecution exec)
             throws IOException {
         String endpoint = request.getMethod() + " " + request.getURI();
-        String destination = request.getURI().getHost();                 // peer cho consecutive-failure
+        String destination = request.getURI().getHost();
         Span span = tracer.nextSpan().name(endpoint).kind(Span.Kind.CLIENT);
 
-        metrics.onRequestStart(endpoint);
+        metrics.onRequestStart();
         long startNanos = System.nanoTime();
         boolean error = false;
         try (var ws = tracer.withSpanInScope(span)) {
-            propagator.inject(tracer.currentContext(), request.getHeaders(), HttpHeaders::add);   // Setter
+            propagator.inject(tracer.currentContext(), request.getHeaders(), HttpHeaders::add);
             ClientHttpResponse res = exec.execute(request, body);
             span.tag("http.status_code", String.valueOf(res.getStatusCode().value()));
             return res;

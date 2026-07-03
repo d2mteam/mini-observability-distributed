@@ -10,13 +10,10 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.web.filter.OncePerRequestFilter;
+import org.springframework.web.servlet.HandlerMapping;
 
 import java.io.IOException;
 
-/**
- * INBOUND: một điểm cắm feed CẢ HAI hệ độc lập — Tracer (span) và MetricsRegistry (đếm).
- * extract trace context → SERVER span; đồng thời onRequestStart/End cho metrics.
- */
 public class TracingFilter extends OncePerRequestFilter {
     private final Tracer tracer;
     private final Propagator propagator;
@@ -31,24 +28,29 @@ public class TracingFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res, FilterChain chain)
             throws ServletException, IOException {
-        String endpoint = req.getMethod() + " " + req.getRequestURI();   // TODO: normalize route (cardinality)
-        TraceContext parent = propagator.extract(req, HttpServletRequest::getHeader);   // Getter
-        Span span = tracer.nextSpan(parent).name(endpoint).kind(Span.Kind.SERVER);
+        TraceContext parent = propagator.extract(req, HttpServletRequest::getHeader);
+        Span span = tracer.nextSpan(parent).kind(Span.Kind.SERVER);
 
-        metrics.onRequestStart(endpoint);
+        metrics.onRequestStart();
         long startNanos = System.nanoTime();
         boolean error = false;
         try (var ws = tracer.withSpanInScope(span)) {
             chain.doFilter(req, res);
-            span.tag("http.status_code", String.valueOf(res.getStatus()));
         } catch (Exception e) {
             error = true;
             span.error(e);
             throw e;
         } finally {
+            String endpoint = endpoint(req);
             long durationMs = (System.nanoTime() - startNanos) / 1_000_000;
-            tracer.finishSpan(span);                                              // → TRACE
-            metrics.onRequestEnd(endpoint, durationMs, error, Math.max(0, req.getContentLengthLong())); // → METRIC
+            span.tag("http.status_code", String.valueOf(res.getStatus())).name(endpoint);
+            tracer.finishSpan(span);
+            metrics.onRequestEnd(endpoint, durationMs, error, Math.max(0, req.getContentLengthLong()));
         }
+    }
+
+    private static String endpoint(HttpServletRequest req) {
+        Object pattern = req.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE);
+        return req.getMethod() + " " + (pattern != null ? pattern : req.getRequestURI());
     }
 }

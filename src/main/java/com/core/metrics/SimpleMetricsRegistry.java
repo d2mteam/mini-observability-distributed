@@ -5,10 +5,6 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
-/**
- * Registry in-memory, thread-safe. Khóa số liệu request theo ENDPOINT, consecutive-failure theo
- * DESTINATION. in-flight là gauge GLOBAL. active-connections là gauge PER-ENDPOINT (trong EndpointStats).
- */
 public class SimpleMetricsRegistry implements MetricsRegistry {
     private final ConcurrentHashMap<String, EndpointStats> byEndpoint = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, AtomicLong> consecutiveFailures = new ConcurrentHashMap<>();
@@ -24,14 +20,14 @@ public class SimpleMetricsRegistry implements MetricsRegistry {
     }
 
     @Override
-    public void onRequestStart(String endpoint) {
+    public void onRequestStart() {
         inFlight.incrementAndGet();
     }
 
     @Override
     public void onRequestEnd(String endpoint, long durationMillis, boolean error, long bytes) {
-        stats(endpoint).record(durationMillis, error, bytes, config.slowThresholdMillis());
         inFlight.decrementAndGet();
+        stats(endpoint).record(durationMillis, error, bytes, config.slowThresholdMillis());
     }
 
     @Override

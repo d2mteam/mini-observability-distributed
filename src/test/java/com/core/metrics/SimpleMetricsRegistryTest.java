@@ -16,9 +16,9 @@ class SimpleMetricsRegistryTest {
     @Test
     void recordsCountErrorSlowBytesLatency() {
         var m = new SimpleMetricsRegistry(new MetricsConfig(10));   // slow > 10ms
-        m.onRequestStart("GET /x");
+        m.onRequestStart();
         m.onRequestEnd("GET /x", 5, false, 100);    // ok, nhanh
-        m.onRequestStart("GET /x");
+        m.onRequestStart();
         m.onRequestEnd("GET /x", 50, true, 200);    // lỗi, slow
 
         MetricsSnapshot.Endpoint ep = m.snapshot().endpoints().get("GET /x");
@@ -34,8 +34,8 @@ class SimpleMetricsRegistryTest {
     @Test
     void inFlightReflectsStartMinusEnd() {
         var m = new SimpleMetricsRegistry();
-        m.onRequestStart("GET /x");
-        m.onRequestStart("GET /x");
+        m.onRequestStart();
+        m.onRequestStart();
         assertEquals(2, m.snapshot().inFlightRequests());
         m.onRequestEnd("GET /x", 1, false, 0);
         assertEquals(1, m.snapshot().inFlightRequests());
@@ -74,7 +74,7 @@ class SimpleMetricsRegistryTest {
         for (int t = 0; t < threads; t++) {
             tasks.add(pool.submit(() -> {
                 for (int i = 0; i < perThread; i++) {
-                    m.onRequestStart("GET /c");
+                    m.onRequestStart();
                     m.onRequestEnd("GET /c", 1, false, 10);
                 }
             }));
@@ -91,7 +91,7 @@ class SimpleMetricsRegistryTest {
     @Test
     void noopDefaultInterfaceRecordsNothing() {
         MetricsRegistry noop = new MetricsRegistry() {};
-        noop.onRequestStart("x");
+        noop.onRequestStart();
         noop.onRequestEnd("x", 1, true, 1);
         assertEquals(0, noop.snapshot().inFlightRequests());
         assertTrue(noop.snapshot().endpoints().isEmpty());
