@@ -27,8 +27,12 @@ public class TracingClientInterceptor implements ClientHttpRequestInterceptor {
     public ClientHttpResponse intercept(HttpRequest request, byte[] body, ClientHttpRequestExecution exec)
             throws IOException {
         String endpoint = request.getMethod() + " " + request.getURI();
-        String destination = request.getURI().getHost();
-        Span span = tracer.nextSpan().name(endpoint).kind(Span.Kind.CLIENT);
+        String host = request.getURI().getHost();
+        String destination = host != null ? host : "unknown";
+        Span span = tracer.nextSpan().name(endpoint).kind(Span.Kind.CLIENT)
+                .tag("protocol", "http")
+                .tag("server.address", destination)
+                .tag("http.request.size", String.valueOf(body != null ? body.length : 0));
 
         metrics.onRequestStart();
         long startNanos = System.nanoTime();

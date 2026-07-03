@@ -43,7 +43,15 @@ public class TracingFilter extends OncePerRequestFilter {
         } finally {
             String endpoint = endpoint(req);
             long durationMs = (System.nanoTime() - startNanos) / 1_000_000;
-            span.tag("http.status_code", String.valueOf(res.getStatus())).name(endpoint);
+            long responseBytes = responseSize(res);
+            span.tag("protocol", "http")
+                    .tag("http.status_code", String.valueOf(res.getStatus()))
+                    .tag("http.request.size", String.valueOf(Math.max(0, req.getContentLengthLong())))
+                    .tag("client.address", req.getRemoteAddr())
+                    .name(endpoint);
+            if (responseBytes >= 0) {
+                span.tag("http.response.size", String.valueOf(responseBytes));
+            }
             tracer.finishSpan(span);
             metrics.onRequestEnd(endpoint, durationMs, error, Math.max(0, req.getContentLengthLong()));
         }
@@ -52,5 +60,17 @@ public class TracingFilter extends OncePerRequestFilter {
     private static String endpoint(HttpServletRequest req) {
         Object pattern = req.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE);
         return req.getMethod() + " " + (pattern != null ? pattern : req.getRequestURI());
+    }
+
+    private static long responseSize(HttpServletResponse res) {
+        String value = res.getHeader("Content-Length");
+        if (value == null) {
+            return -1;
+        }
+        try {
+            return Long.parseLong(value);
+        } catch (NumberFormatException e) {
+            return -1;
+        }
     }
 }
