@@ -2,9 +2,10 @@ package com.core.metrics;
 
 import java.util.Map;
 
-public record MetricsSnapshot(long inFlightRequests,
-                              Map<String, Endpoint> endpoints,
-                              Map<String, Long> consecutiveFailures) {
+public record MetricsSnapshot(
+        long inFlightRequests,
+        Map<String, Endpoint> endpoints,
+        Map<String, Long> consecutiveFailures) {
 
     public record Endpoint(long count, long errors, long slow, long totalBytes,
                            long activeConnections,

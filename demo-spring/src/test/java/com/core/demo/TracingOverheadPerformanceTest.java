@@ -165,7 +165,7 @@ class TracingOverheadPerformanceTest {
         if (!allocationBean.isThreadAllocatedMemoryEnabled()) {
             allocationBean.setThreadAllocatedMemoryEnabled(true);
         }
-        return allocationBean.getThreadAllocatedBytes(Thread.currentThread().getId());
+        return allocationBean.getThreadAllocatedBytes(Thread.currentThread().threadId());
     }
 
     private static long usedMemory() {

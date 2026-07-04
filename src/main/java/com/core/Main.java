@@ -1,5 +1,8 @@
 package com.core;
 
+import com.core.export.ConsoleExportSink;
+import com.core.export.MetricsPushExporter;
+import com.core.export.ServiceIdentity;
 import com.core.metrics.MetricsConfig;
 import com.core.metrics.SimpleMetricsRegistry;
 import com.core.tracing.Sampler.Sampler;
@@ -96,5 +99,14 @@ public class Main {
 
         System.out.println("\n=== METRICS SNAPSHOT ===");
         System.out.println(objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(metrics.snapshot()));
+
+
+        MetricsPushExporter metricsPushExporter = MetricsPushExporter.builder()
+                .serviceIdentity(ServiceIdentity.create("demo-main"))
+                .exportSink(new ConsoleExportSink())
+                .metricsRegistry(metrics)
+                .build();
+
+        metricsPushExporter.flush();
     }
 }

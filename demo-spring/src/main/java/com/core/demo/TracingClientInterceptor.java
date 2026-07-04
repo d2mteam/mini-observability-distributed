@@ -26,13 +26,15 @@ public class TracingClientInterceptor implements ClientHttpRequestInterceptor {
     @Override
     public ClientHttpResponse intercept(HttpRequest request, byte[] body, ClientHttpRequestExecution exec)
             throws IOException {
-        String endpoint = request.getMethod() + " " + request.getURI();
+//        String endpoint = request.getMethod() + " " + request.getURI(); /placeholder
+
+        String endpoint = "HTTP";
         String host = request.getURI().getHost();
         String destination = host != null ? host : "unknown";
         Span span = tracer.nextSpan().name(endpoint).kind(Span.Kind.CLIENT)
                 .tag("protocol", "http")
                 .tag("server.address", destination)
-                .tag("http.request.size", String.valueOf(body != null ? body.length : 0));
+                .tag("http.request.size", String.valueOf(body.length));
 
         metrics.onRequestStart();
         long startNanos = System.nanoTime();
@@ -49,8 +51,11 @@ public class TracingClientInterceptor implements ClientHttpRequestInterceptor {
         } finally {
             long durationMs = (System.nanoTime() - startNanos) / 1_000_000;
             tracer.finishSpan(span);
-            metrics.onRequestEnd(endpoint, durationMs, error, body != null ? body.length : 0);
+            metrics.onRequestEnd(endpoint, durationMs, error, body.length);
             metrics.onDestinationResult(destination, !error);
         }
     }
+
+    // String pattern = (String) request.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE);
+
 }
