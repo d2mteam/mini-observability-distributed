@@ -1,4 +1,4 @@
-package com.core.export;
+package com.core.export.metrics;
 
 import com.core.metrics.MetricsSnapshot;
 import lombok.Builder;

@@ -6,12 +6,10 @@ import com.core.tracing.propagation.TraceContextHolder;
 
 
 public class Tracer {
-    private final String serviceName;
     private final SpanDispatcher spanDispatcher;
     private final Sampler sampler;
 
-    public Tracer(String serviceName, SpanDispatcher spanDispatcher, Sampler sampler) {
-        this.serviceName = serviceName;
+    public Tracer(SpanDispatcher spanDispatcher, Sampler sampler) {
         this.spanDispatcher = spanDispatcher;
         this.sampler = sampler;
     }
@@ -22,7 +20,6 @@ public class Tracer {
                 .traceId(context.traceId())
                 .spanId(context.spanId())
                 .parentSpanId(context.parentSpanId())
-                .serviceName(serviceName)
                 .sampled(context.sampled())
                 .startEpochMillis(System.currentTimeMillis())
                 .build();

@@ -79,7 +79,7 @@ class TracingOverheadPerformanceTest {
 
     private Tracer tracer(Sampler sampler) {
         SpanHandler sink = span -> blackhole ^= span.getSpanId().hashCode();
-        return new Tracer("demo-spring-perf", new SpanDispatcher(List.of(sink)), sampler);
+        return new Tracer(new SpanDispatcher(List.of(sink)), sampler);
     }
 
     private void bareServletCall() throws Exception {

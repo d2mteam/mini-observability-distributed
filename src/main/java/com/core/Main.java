@@ -1,7 +1,7 @@
 package com.core;
 
-import com.core.export.ConsoleExportSink;
-import com.core.export.MetricsPushExporter;
+import com.core.export.metrics.ConsoleExportSink;
+import com.core.export.metrics.MetricsPushExporter;
 import com.core.export.ServiceIdentity;
 import com.core.metrics.MetricsConfig;
 import com.core.metrics.SimpleMetricsRegistry;
@@ -9,15 +9,14 @@ import com.core.tracing.Sampler.Sampler;
 import com.core.tracing.Span;
 import com.core.tracing.SpanDispatcher;
 import com.core.tracing.Tracer;
+import com.core.export.tracing.ConsoleSpanSink;
+import com.core.export.tracing.SpanExporter;
 import com.core.tracing.handler.SpanHandler;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
+import java.util.concurrent.*;
 
 public class Main {
     public static void main(String[] args) throws Exception {
@@ -32,7 +31,7 @@ public class Main {
         };
 
         // =================== TRACING demo (sync + async) ===================
-        Tracer tracer = new Tracer("main", new SpanDispatcher(List.of(printer)), Sampler.ALWAYS_SAMPLE);
+        Tracer tracer = new Tracer(new SpanDispatcher(List.of(printer)), Sampler.ALWAYS_SAMPLE);
         ExecutorService pool = Executors.newFixedThreadPool(2);
         ExecutorService callbackPool = Executors.newSingleThreadExecutor();
 
@@ -81,6 +80,49 @@ public class Main {
         pool.shutdown();
         callbackPool.shutdown();
 
+        // =================== SPAN EXPORT demo (bounded batch exporter + console sink) ===================
+        System.out.println("\n=== SPAN EXPORT DEMO ===");
+        ServiceIdentity spanIdentity = ServiceIdentity.create("demo-main");
+        try (SpanExporter spanExporter = new SpanExporter(
+                spanIdentity.serviceName(),
+                spanIdentity.instanceId(),
+                new ConsoleSpanSink(),
+                32,
+                10,
+                100)) {
+            Tracer exportTracer = new Tracer(
+                    new SpanDispatcher(List.of(spanExporter)),
+                    Sampler.ALWAYS_SAMPLE);
+
+            Span server = exportTracer.nextSpan()
+                    .name("GET /checkout/{id}")
+                    .kind(Span.Kind.SERVER)
+                    .tag("protocol", "http")
+                    .tag("http.status_code", "200");
+            try (var ignored = exportTracer.withSpanInScope(server)) {
+                Span jdbc = exportTracer.nextSpan()
+                        .name("SELECT cart_items")
+                        .kind(Span.Kind.CLIENT)
+                        .tag("protocol", "jdbc")
+                        .tag("db.system", "postgresql")
+                        .tag("db.statement", "select * from cart_items where cart_id = ?");
+                try (var jdbcScope = exportTracer.withSpanInScope(jdbc)) {
+                    jdbc.tag("db.rows", "3");
+                } finally {
+                    exportTracer.finishSpan(jdbc);
+                }
+            } finally {
+                exportTracer.finishSpan(server);
+            }
+
+            spanExporter.flush();
+            System.out.printf("span-exporter stats accepted=%d exported=%d dropped=%d failed=%d%n",
+                    spanExporter.acceptedCount(),
+                    spanExporter.exportedCount(),
+                    spanExporter.droppedCount(),
+                    spanExporter.failedCount());
+        }
+
         // =================== METRICS demo (độc lập với tracing) ===================
         var metrics = new SimpleMetricsRegistry(new MetricsConfig(2));   // slow > 2ms
 
@@ -100,13 +142,21 @@ public class Main {
         System.out.println("\n=== METRICS SNAPSHOT ===");
         System.out.println(objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(metrics.snapshot()));
 
-
+        ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
         MetricsPushExporter metricsPushExporter = MetricsPushExporter.builder()
                 .serviceIdentity(ServiceIdentity.create("demo-main"))
                 .exportSink(new ConsoleExportSink())
                 .metricsRegistry(metrics)
+                .scheduler(scheduler)
+                .intervalSeconds(10)
                 .build();
 
-        metricsPushExporter.flush();
+        try {
+            metricsPushExporter.flush();
+            metricsPushExporter.start();
+        } finally {
+            metricsPushExporter.close();
+            scheduler.shutdownNow();
+        }
     }
 }

@@ -26,7 +26,7 @@ class TracerTest {
     private Tracer tracer(Sampler sampler) {
         recorded.clear();
         SpanHandler collector = recorded::add;
-        return new Tracer("test", new SpanDispatcher(List.of(collector)), sampler);
+        return new Tracer(new SpanDispatcher(List.of(collector)), sampler);
     }
 
     @AfterEach

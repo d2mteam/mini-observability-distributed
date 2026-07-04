@@ -26,9 +26,6 @@ public class Span {
     private Kind kind;
 
     @Getter
-    private final String serviceName;
-
-    @Getter
     private final long startEpochMillis;
 
     @Getter
@@ -48,13 +45,12 @@ public class Span {
 
     @Builder
     public Span(String traceId, String spanId, String parentSpanId,
-                String name, Kind kind, String serviceName, long startEpochMillis, boolean sampled) {
+                String name, Kind kind, long startEpochMillis, boolean sampled) {
         this.traceId = traceId;
         this.spanId = spanId;
         this.parentSpanId = parentSpanId;
         this.name = name;
         this.kind = kind;
-        this.serviceName = serviceName;
         this.startEpochMillis = startEpochMillis;
         this.sampled = sampled;
     }
