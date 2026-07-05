@@ -16,11 +16,12 @@ class SpanRecordTest {
                 .parentSpanId("1111111111111111")
                 .sampled(true)
                 .startEpochMillis(1_000)
+                .startNanos(0)
                 .build()
                 .name("GET /orders/{id}")
                 .kind(Span.Kind.SERVER)
                 .tag("http.status_code", "200");
-        span.end(1_025);
+        span.end(25_000_000);
 
         SpanRecord record = SpanRecord.from(span);
 

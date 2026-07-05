@@ -28,6 +28,8 @@ public class Span {
     @Getter
     private final long startEpochMillis;
 
+    private final long startNanos;
+
     @Getter
     private final boolean sampled;
 
@@ -45,13 +47,14 @@ public class Span {
 
     @Builder
     public Span(String traceId, String spanId, String parentSpanId,
-                String name, Kind kind, long startEpochMillis, boolean sampled) {
+                String name, Kind kind, long startEpochMillis, long startNanos, boolean sampled) {
         this.traceId = traceId;
         this.spanId = spanId;
         this.parentSpanId = parentSpanId;
         this.name = name;
         this.kind = kind;
         this.startEpochMillis = startEpochMillis;
+        this.startNanos = startNanos;
         this.sampled = sampled;
     }
 
@@ -80,10 +83,10 @@ public class Span {
      * Chốt duration/status — chỉ chạm field của chính mình (Span là dữ liệu thuần, không record).
      * Package-private: chỉ {@link Tracer} gọi qua {@link Tracer#finishSpan(Span)}. Idempotent.
      */
-    void end(long endEpochMillis) {
+    void end(long endNanos) {
         if (finished) return;
         if (status == Status.UNSET) status = Status.OK;
-        this.durationMillis = endEpochMillis - startEpochMillis;
+        this.durationMillis = (endNanos - startNanos) / 1_000_000;
         this.finished = true;
     }
 }

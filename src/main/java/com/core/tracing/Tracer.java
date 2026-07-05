@@ -22,6 +22,7 @@ public class Tracer {
                 .parentSpanId(context.parentSpanId())
                 .sampled(context.sampled())
                 .startEpochMillis(System.currentTimeMillis())
+                .startNanos(System.nanoTime())
                 .build();
     }
 
@@ -72,7 +73,7 @@ public class Tracer {
      */
     public void finishSpan(Span span) {
         if (span == null || span.isFinished()) return;
-        span.end(System.currentTimeMillis());
+        span.end(System.nanoTime());
         if (span.isSampled()) {                          // không sampled → không xuất, chỉ propagate
             try {
                 spanDispatcher.dispatch(span);
