@@ -8,22 +8,22 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.Objects;
 
-public class HttpExportSink implements ExportSink {
+public class HttpMetricsExportSink implements MetricsExportSink {
     private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(5);
 
     private final HttpClient httpClient;
     private final URI endpoint;
     private final Duration timeout;
 
-    public HttpExportSink(String endpoint) {
+    public HttpMetricsExportSink(String endpoint) {
         this(URI.create(endpoint));
     }
 
-    public HttpExportSink(URI endpoint) {
+    public HttpMetricsExportSink(URI endpoint) {
         this(HttpClient.newHttpClient(), endpoint, DEFAULT_TIMEOUT);
     }
 
-    public HttpExportSink(HttpClient httpClient, URI endpoint, Duration timeout) {
+    public HttpMetricsExportSink(HttpClient httpClient, URI endpoint, Duration timeout) {
         this.httpClient = Objects.requireNonNull(httpClient, "httpClient");
         this.endpoint = Objects.requireNonNull(endpoint, "endpoint");
         this.timeout = Objects.requireNonNull(timeout, "timeout");

@@ -41,3 +41,8 @@ bin/
 
 ### Mac OS ###
 .DS_Store
+
+### Local observability demo servers ###
+/observability-receiver-spring/
+/observability-test-server/
+/observability-demo-scripts/

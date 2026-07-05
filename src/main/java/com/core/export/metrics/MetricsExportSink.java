@@ -1,5 +1,5 @@
 package com.core.export.metrics;
 
-public interface ExportSink {
+public interface MetricsExportSink {
     void send(String json);
 }

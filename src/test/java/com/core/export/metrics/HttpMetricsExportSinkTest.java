@@ -15,7 +15,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-class HttpExportSinkTest {
+class HttpMetricsExportSinkTest {
     private final List<CapturedRequest> captured = new ArrayList<>();
     private HttpServer server;
 
@@ -29,7 +29,7 @@ class HttpExportSinkTest {
     @Test
     void postsJsonToEndpoint() throws Exception {
         URI endpoint = startServer(204);
-        HttpExportSink sink = new HttpExportSink(endpoint);
+        HttpMetricsExportSink sink = new HttpMetricsExportSink(endpoint);
 
         sink.send("{\"metrics\":true}");
 
@@ -44,7 +44,7 @@ class HttpExportSinkTest {
     @Test
     void throwsWhenServerReturnsNon2xx() throws Exception {
         URI endpoint = startServer(500);
-        HttpExportSink sink = new HttpExportSink(endpoint);
+        HttpMetricsExportSink sink = new HttpMetricsExportSink(endpoint);
 
         assertThrows(IllegalStateException.class, () -> sink.send("{\"metrics\":true}"));
     }

@@ -13,7 +13,7 @@ import java.util.concurrent.TimeUnit;
 public class MetricsPushExporter implements AutoCloseable {
     private final ObjectMapper mapper = new ObjectMapper();
     private final ServiceIdentity serviceIdentity;
-    private final ExportSink exportSink;
+    private final MetricsExportSink metricsExportSink;
     private final MetricsRegistry metricsRegistry;
     private final ScheduledExecutorService scheduler;
     private final long intervalSeconds;
@@ -21,12 +21,12 @@ public class MetricsPushExporter implements AutoCloseable {
 
     @Builder
     public MetricsPushExporter(ServiceIdentity serviceIdentity,
-                               ExportSink exportSink,
+                               MetricsExportSink metricsExportSink,
                                MetricsRegistry metricsRegistry,
                                ScheduledExecutorService scheduler,
                                long intervalSeconds) {
         this.serviceIdentity = serviceIdentity;
-        this.exportSink = exportSink;
+        this.metricsExportSink = metricsExportSink;
         this.metricsRegistry = metricsRegistry;
         this.scheduler = scheduler;
         this.intervalSeconds = intervalSeconds;
@@ -43,7 +43,7 @@ public class MetricsPushExporter implements AutoCloseable {
                 .capturedAtMillis(System.currentTimeMillis())
                 .snapshot(metricsRegistry.snapshot())
                 .build();
-        exportSink.send(mapper.writeValueAsString(metricsExport));
+        metricsExportSink.send(mapper.writeValueAsString(metricsExport));
     }
 
     private void flushQuietly() {

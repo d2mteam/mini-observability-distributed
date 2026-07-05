@@ -1,47 +1,38 @@
 package com.core.export.tracing;
 
+import com.core.export.ServiceIdentity;
 import com.core.tracing.Span;
 import com.core.tracing.handler.SpanHandler;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectWriter;
+import lombok.AccessLevel;
+import lombok.Builder;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicLong;
 
 public class SpanExporter implements SpanHandler, AutoCloseable {
     public static final int DEFAULT_QUEUE_CAPACITY = 1024;
     public static final int DEFAULT_BATCH_SIZE = 64;
     public static final long DEFAULT_MAX_DELAY_MILLIS = 1_000;
 
-    private final String serviceName;
-    private final String instanceId;
+    private final ServiceIdentity serviceIdentity;
     private final SpanSink spanSink;
     private final ArrayBlockingQueue<SpanRecord> queue;
     private final int batchSize;
     private final long maxDelayMillis;
     private final ObjectWriter writer;
-    private final Object exportLock = new Object();
-    private final AtomicBoolean started = new AtomicBoolean(false);
-    private final AtomicBoolean closed = new AtomicBoolean(false);
-    private final AtomicLong acceptedCount = new AtomicLong();
-    private final AtomicLong exportedCount = new AtomicLong();
-    private final AtomicLong droppedCount = new AtomicLong();
-    private final AtomicLong failedCount = new AtomicLong();
 
-    private volatile Thread workerThread;
+    // Mini-project tradeoff: approximate under high concurrency. Use LongAdder/AtomicLong later
+    // if dropped span accounting becomes part of the public contract.
+    private long droppedCount;
+    private volatile boolean running;
+    private Thread workerThread;
 
-    public SpanExporter(String serviceName, String instanceId, SpanSink spanSink) {
-        this(serviceName, instanceId, spanSink,
-                DEFAULT_QUEUE_CAPACITY, DEFAULT_BATCH_SIZE, DEFAULT_MAX_DELAY_MILLIS);
-    }
-
-    public SpanExporter(String serviceName,
-                        String instanceId,
+    public SpanExporter(ServiceIdentity serviceIdentity,
                         SpanSink spanSink,
                         int queueCapacity,
                         int batchSize,
@@ -55,8 +46,7 @@ public class SpanExporter implements SpanHandler, AutoCloseable {
         if (maxDelayMillis <= 0) {
             throw new IllegalArgumentException("maxDelayMillis must be positive");
         }
-        this.serviceName = Objects.requireNonNull(serviceName, "serviceName");
-        this.instanceId = Objects.requireNonNull(instanceId, "instanceId");
+        this.serviceIdentity = Objects.requireNonNull(serviceIdentity, "serviceIdentity");
         this.spanSink = Objects.requireNonNull(spanSink, "spanSink");
         this.queue = new ArrayBlockingQueue<>(queueCapacity);
         this.batchSize = batchSize;
@@ -64,27 +54,41 @@ public class SpanExporter implements SpanHandler, AutoCloseable {
         this.writer = new ObjectMapper().writerWithDefaultPrettyPrinter();
     }
 
+    @Builder(access = AccessLevel.PUBLIC)
+    private static SpanExporter create(ServiceIdentity serviceIdentity,
+                                       SpanSink spanSink,
+                                       Integer queueCapacity,
+                                       Integer batchSize,
+                                       Long maxDelayMillis) {
+        return new SpanExporter(
+                serviceIdentity,
+                spanSink,
+                queueCapacity == null ? DEFAULT_QUEUE_CAPACITY : queueCapacity,
+                batchSize == null ? DEFAULT_BATCH_SIZE : batchSize,
+                maxDelayMillis == null ? DEFAULT_MAX_DELAY_MILLIS : maxDelayMillis
+        );
+    }
+
     @Override
     public void handle(Span span) {
-        if (span == null || closed.get()) {
-            droppedCount.incrementAndGet();
+        if (span == null) {
+            droppedCount++;
             return;
         }
 
         SpanRecord record = SpanRecord.from(span);
-        if (queue.offer(record)) {
-            acceptedCount.incrementAndGet();
-        } else {
-            droppedCount.incrementAndGet();
+        if (!queue.offer(record)) {
+            droppedCount++;
         }
     }
 
     public void start() {
-        if (closed.get() || !started.compareAndSet(false, true)) {
+        if (running) {
             return;
         }
 
-        Thread worker = new Thread(this::runWorker, "span-exporter-" + serviceName);
+        running = true;
+        Thread worker = new Thread(this::runWorker, "span-exporter-" + serviceIdentity.serviceName());
         worker.setDaemon(true);
         workerThread = worker;
         worker.start();
@@ -104,100 +108,52 @@ public class SpanExporter implements SpanHandler, AutoCloseable {
 
     @Override
     public void close() {
-        if (!closed.compareAndSet(false, true)) {
-            return;
-        }
-
+        running = false;
         Thread worker = workerThread;
         if (worker != null) {
             worker.interrupt();
             try {
-                worker.join(maxDelayMillis + 1_000);
+                worker.join();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
         }
 
+        // No export lock in this demo: after the worker has stopped, shutdown draining
+        // is single-threaded. Do not call flush() concurrently with the worker in this version.
         flush();
         closeSink();
     }
 
-    public long acceptedCount() {
-        return acceptedCount.get();
-    }
-
-    public long exportedCount() {
-        return exportedCount.get();
-    }
-
     public long droppedCount() {
-        return droppedCount.get();
-    }
-
-    public long failedCount() {
-        return failedCount.get();
-    }
-
-    public int queueDepth() {
-        return queue.size();
-    }
-
-    public boolean isStarted() {
-        return started.get();
-    }
-
-    public boolean isClosed() {
-        return closed.get();
+        return droppedCount;
     }
 
     private void runWorker() {
-        try {
-            while (!closed.get() && !Thread.currentThread().isInterrupted()) {
-                exportNextBatch();
-            }
-        } finally {
-            flush();
+        while (running && !Thread.currentThread().isInterrupted()) {
+            exportNextBatch();
         }
     }
 
     private void exportNextBatch() {
         List<SpanRecord> batch = new ArrayList<>(batchSize);
-        boolean interrupted = false;
         try {
             SpanRecord first = queue.poll(maxDelayMillis, TimeUnit.MILLISECONDS);
             if (first == null) {
                 return;
             }
 
+            // Simple demo batching: wait for the first span, then take what is already queued.
+            // Production exporters usually keep a deadline and wait for more spans before sending.
             batch.add(first);
-            long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(maxDelayMillis);
-            while (batch.size() < batchSize) {
-                SpanRecord immediate = queue.poll();
-                if (immediate != null) {
-                    batch.add(immediate);
-                    continue;
-                }
-
-                long remainingNanos = deadlineNanos - System.nanoTime();
-                if (remainingNanos <= 0) {
-                    break;
-                }
-
-                SpanRecord next = queue.poll(remainingNanos, TimeUnit.NANOSECONDS);
-                if (next == null) {
-                    break;
-                }
-                batch.add(next);
-            }
+            queue.drainTo(batch, batchSize - 1);
         } catch (InterruptedException e) {
-            interrupted = true;
+            Thread.currentThread().interrupt();
+            return;
         }
 
         if (!batch.isEmpty()) {
             exportRecords(batch);
-        }
-        if (interrupted) {
-            Thread.currentThread().interrupt();
         }
     }
 
@@ -206,18 +162,16 @@ public class SpanExporter implements SpanHandler, AutoCloseable {
             return;
         }
 
-        synchronized (exportLock) {
-            try {
-                SpanExport export = new SpanExport(
-                        serviceName,
-                        instanceId,
-                        System.currentTimeMillis(),
-                        records);
-                spanSink.send(writer.writeValueAsString(export));
-                exportedCount.addAndGet(records.size());
-            } catch (Exception e) {
-                failedCount.addAndGet(records.size());
-            }
+        try {
+            SpanExport export = new SpanExport(
+                    serviceIdentity.serviceName(),
+                    serviceIdentity.instanceId(),
+                    System.currentTimeMillis(),
+                    records);
+            spanSink.send(writer.writeValueAsString(export));
+        } catch (Exception ignored) {
+            // Demo exporter: export failures must not break the observed application.
+            // TODO: add retry/requeue/failure metrics if this grows beyond a mini project.
         }
     }
 

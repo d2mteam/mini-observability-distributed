@@ -1,6 +1,6 @@
 package com.core;
 
-import com.core.export.metrics.ConsoleExportSink;
+import com.core.export.metrics.ConsoleMetricsExportSink;
 import com.core.export.metrics.MetricsPushExporter;
 import com.core.export.ServiceIdentity;
 import com.core.metrics.MetricsConfig;
@@ -83,13 +83,13 @@ public class Main {
         // =================== SPAN EXPORT demo (bounded batch exporter + console sink) ===================
         System.out.println("\n=== SPAN EXPORT DEMO ===");
         ServiceIdentity spanIdentity = ServiceIdentity.create("demo-main");
-        try (SpanExporter spanExporter = new SpanExporter(
-                spanIdentity.serviceName(),
-                spanIdentity.instanceId(),
-                new ConsoleSpanSink(),
-                32,
-                10,
-                100)) {
+        try (SpanExporter spanExporter = SpanExporter.builder()
+                .serviceIdentity(spanIdentity)
+                .spanSink(new ConsoleSpanSink())
+                .queueCapacity(32)
+                .batchSize(10)
+                .maxDelayMillis(100L)
+                .build()) {
             Tracer exportTracer = new Tracer(
                     new SpanDispatcher(List.of(spanExporter)),
                     Sampler.ALWAYS_SAMPLE);
@@ -116,11 +116,7 @@ public class Main {
             }
 
             spanExporter.flush();
-            System.out.printf("span-exporter stats accepted=%d exported=%d dropped=%d failed=%d%n",
-                    spanExporter.acceptedCount(),
-                    spanExporter.exportedCount(),
-                    spanExporter.droppedCount(),
-                    spanExporter.failedCount());
+            System.out.printf("span-exporter dropped=%d%n", spanExporter.droppedCount());
         }
 
         // =================== METRICS demo (độc lập với tracing) ===================
@@ -145,7 +141,7 @@ public class Main {
         ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
         MetricsPushExporter metricsPushExporter = MetricsPushExporter.builder()
                 .serviceIdentity(ServiceIdentity.create("demo-main"))
-                .exportSink(new ConsoleExportSink())
+                .metricsExportSink(new ConsoleMetricsExportSink())
                 .metricsRegistry(metrics)
                 .scheduler(scheduler)
                 .intervalSeconds(10)

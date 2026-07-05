@@ -1,5 +1,6 @@
 package com.core.tracing.export;
 
+import com.core.export.ServiceIdentity;
 import com.core.export.tracing.SpanExporter;
 import com.core.export.tracing.SpanSink;
 import com.core.tracing.Span;
@@ -18,18 +19,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SpanExporterTest {
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ServiceIdentity IDENTITY = new ServiceIdentity("orders", "instance-1");
 
     @Test
     void handleEnqueuesAndFlushExportsPrettyJsonBatch() throws Exception {
         CapturingSpanSink sink = new CapturingSpanSink();
-        SpanExporter exporter = new SpanExporter("orders", "instance-1", sink, 10, 10, 50);
+        SpanExporter exporter = exporter(sink, 10, 10, 50);
 
         exporter.handle(span("0000000000000001"));
         exporter.flush();
 
         assertEquals(1, sink.payloads.size());
-        assertEquals(1, exporter.acceptedCount());
-        assertEquals(1, exporter.exportedCount());
         assertEquals(0, exporter.droppedCount());
         assertTrue(sink.payloads.get(0).contains("\n"), "expected pretty JSON");
 
@@ -41,52 +41,61 @@ class SpanExporterTest {
     }
 
     @Test
+    void builderUsesDefaultBatchSettings() {
+        CapturingSpanSink sink = new CapturingSpanSink();
+        SpanExporter exporter = SpanExporter.builder()
+                .serviceIdentity(IDENTITY)
+                .spanSink(sink)
+                .build();
+
+        exporter.handle(span("0000000000000001"));
+        exporter.flush();
+
+        assertEquals(1, sink.payloads.size());
+    }
+
+    @Test
     void dropsWhenQueueIsFull() {
         CapturingSpanSink sink = new CapturingSpanSink();
-        SpanExporter exporter = new SpanExporter("orders", "instance-1", sink, 1, 10, 50);
+        SpanExporter exporter = exporter(sink, 1, 10, 50);
 
         exporter.handle(span("0000000000000001"));
         exporter.handle(span("0000000000000002"));
         exporter.flush();
 
-        assertEquals(1, exporter.acceptedCount());
         assertEquals(1, exporter.droppedCount());
-        assertEquals(1, exporter.exportedCount());
         assertEquals(1, sink.payloads.size());
     }
 
     @Test
     void startRunsWorkerAndExportsBatch() throws Exception {
         LatchingSpanSink sink = new LatchingSpanSink(1);
-        SpanExporter exporter = new SpanExporter("orders", "instance-1", sink, 10, 2, 20);
+        SpanExporter exporter = exporter(sink, 10, 2, 20);
 
         exporter.start();
         exporter.start();
         exporter.handle(span("0000000000000001"));
 
         assertTrue(sink.await(), "worker did not export batch");
-        assertEquals(1, exporter.exportedCount());
-        assertEquals(true, exporter.isStarted());
+        assertEquals(1, sink.payloads.size());
         exporter.close();
     }
 
     @Test
     void closeFlushesRemainingSpans() {
         CapturingSpanSink sink = new CapturingSpanSink();
-        SpanExporter exporter = new SpanExporter("orders", "instance-1", sink, 10, 10, 50);
+        SpanExporter exporter = exporter(sink, 10, 10, 50);
 
         exporter.handle(span("0000000000000001"));
         exporter.close();
 
-        assertEquals(true, exporter.isClosed());
-        assertEquals(1, exporter.exportedCount());
         assertEquals(1, sink.payloads.size());
     }
 
     @Test
     void closeClosesAutoCloseableSink() {
         ClosingSpanSink sink = new ClosingSpanSink();
-        SpanExporter exporter = new SpanExporter("orders", "instance-1", sink, 10, 10, 50);
+        SpanExporter exporter = exporter(sink, 10, 10, 50);
 
         exporter.close();
 
@@ -94,16 +103,24 @@ class SpanExporterTest {
     }
 
     @Test
-    void sinkFailureDoesNotEscapeAndIncrementsFailureCount() {
-        SpanExporter exporter = new SpanExporter("orders", "instance-1", json -> {
-            throw new IllegalStateException("sink down");
-        }, 10, 10, 50);
+    void sinkFailureDoesNotEscape() {
+        ThrowingSpanSink sink = new ThrowingSpanSink();
+        SpanExporter exporter = exporter(sink, 10, 10, 50);
 
         exporter.handle(span("0000000000000001"));
 
         assertDoesNotThrow(exporter::flush);
-        assertEquals(0, exporter.exportedCount());
-        assertEquals(1, exporter.failedCount());
+        assertEquals(1, sink.calls);
+    }
+
+    @Test
+    void flushDoesNothingWhenQueueIsEmpty() {
+        CapturingSpanSink sink = new CapturingSpanSink();
+        SpanExporter exporter = exporter(sink, 10, 10, 50);
+
+        exporter.flush();
+
+        assertEquals(0, sink.payloads.size());
     }
 
     private static Span span(String spanId) {
@@ -119,6 +136,19 @@ class SpanExporterTest {
                 .tag("component", "test");
         span.status(Span.Status.OK);
         return span;
+    }
+
+    private static SpanExporter exporter(SpanSink sink,
+                                         int queueCapacity,
+                                         int batchSize,
+                                         long maxDelayMillis) {
+        return SpanExporter.builder()
+                .serviceIdentity(IDENTITY)
+                .spanSink(sink)
+                .queueCapacity(queueCapacity)
+                .batchSize(batchSize)
+                .maxDelayMillis(maxDelayMillis)
+                .build();
     }
 
     private static class CapturingSpanSink implements SpanSink {
@@ -154,6 +184,16 @@ class SpanExporterTest {
         @Override
         public void close() {
             closed = true;
+        }
+    }
+
+    private static class ThrowingSpanSink implements SpanSink {
+        int calls;
+
+        @Override
+        public void send(String json) {
+            calls++;
+            throw new IllegalStateException("sink down");
         }
     }
 }
