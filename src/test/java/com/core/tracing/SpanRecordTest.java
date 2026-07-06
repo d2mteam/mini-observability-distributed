@@ -31,6 +31,7 @@ class SpanRecordTest {
         assertEquals("GET /orders/{id}", record.name());
         assertEquals(Span.Kind.SERVER, record.kind());
         assertEquals(1_000, record.startEpochMillis());
+        assertEquals(0, record.startNanos());
         assertEquals(25, record.durationMillis());
         assertEquals(Span.Status.OK, record.status());
         assertEquals(true, record.sampled());

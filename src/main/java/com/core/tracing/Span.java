@@ -7,8 +7,9 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class Span {
-    public enum Kind { CLIENT, SERVER, PRODUCER, CONSUMER, INTERNAL }
-    public enum Status { UNSET, OK, ERROR }
+    public enum Kind {CLIENT, SERVER, PRODUCER, CONSUMER, INTERNAL}
+
+    public enum Status {UNSET, OK, ERROR}
 
     @Getter
     private final String traceId;
@@ -28,6 +29,7 @@ public class Span {
     @Getter
     private final long startEpochMillis;
 
+    @Getter
     private final long startNanos;
 
     @Getter
@@ -35,6 +37,10 @@ public class Span {
 
     @Getter
     private long durationMillis;
+
+//    @Getter
+//    private final long durationNanos;
+// need to fix
 
     @Getter
     private Status status = Status.UNSET;
@@ -59,9 +65,20 @@ public class Span {
     }
 
     // ---- mutator adapter dùng khi span đang chạy ----
-    public Span name(String name)     { if (!finished) this.name = name;     return this; }
-    public Span kind(Kind kind)       { if (!finished) this.kind = kind;     return this; }
-    public Span status(Status status) { if (!finished) this.status = status; return this; }
+    public Span name(String name) {
+        if (!finished) this.name = name;
+        return this;
+    }
+
+    public Span kind(Kind kind) {
+        if (!finished) this.kind = kind;
+        return this;
+    }
+
+    public Span status(Status status) {
+        if (!finished) this.status = status;
+        return this;
+    }
 
     public Span tag(String key, String value) {
         if (!finished && key != null && value != null) attributes.put(key, value);
