@@ -44,8 +44,13 @@ public class TracingFilter extends OncePerRequestFilter {
             String endpoint = endpoint(req);
             long durationMs = (System.nanoTime() - startNanos) / 1_000_000;
             long responseBytes = responseSize(res);
+            int status = statusCode(res, error);
+            boolean requestError = error || isErrorStatus(status);
+            if (requestError) {
+                span.status(Span.Status.ERROR);
+            }
             span.tag("protocol", "http")
-                    .tag("http.status_code", String.valueOf(res.getStatus()))
+                    .tag("http.status_code", String.valueOf(status))
                     .tag("http.request.size", String.valueOf(Math.max(0, req.getContentLengthLong())))
                     .tag("client.address", req.getRemoteAddr())
                     .name(endpoint);
@@ -53,7 +58,7 @@ public class TracingFilter extends OncePerRequestFilter {
                 span.tag("http.response.size", String.valueOf(responseBytes));
             }
             tracer.finishSpan(span);
-            metrics.onRequestEnd(endpoint, durationMs, error, Math.max(0, req.getContentLengthLong()));
+            metrics.onRequestEnd(endpoint, durationMs, requestError, Math.max(0, req.getContentLengthLong()));
         }
     }
 
@@ -72,5 +77,17 @@ public class TracingFilter extends OncePerRequestFilter {
         } catch (NumberFormatException e) {
             return -1;
         }
+    }
+
+    private static int statusCode(HttpServletResponse res, boolean caughtException) {
+        int status = res.getStatus();
+        if (caughtException && status < 400) {
+            return 500;
+        }
+        return status;
+    }
+
+    private static boolean isErrorStatus(int status) {
+        return status >= 400;
     }
 }

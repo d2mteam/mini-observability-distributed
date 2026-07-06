@@ -17,6 +17,7 @@ dependencies {
     compileOnly 'org.springframework:spring-webmvc:7.0.7'     // HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE (normalize route)
     compileOnly 'org.springframework:spring-context:6.2.7'    // EnvironmentAware (GenericFilterBean kế thừa gián tiếp)
     compileOnly 'jakarta.servlet:jakarta.servlet-api:6.0.0'    // HttpServletRequest/Response, FilterChain
+    implementation 'net.ttddyy:datasource-proxy:1.11.0'
 
     testImplementation platform('org.junit:junit-bom:5.10.0')
     testImplementation 'org.junit.jupiter:junit-jupiter'

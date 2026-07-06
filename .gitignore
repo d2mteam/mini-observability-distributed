@@ -45,4 +45,5 @@ bin/
 ### Local observability demo servers ###
 /observability-receiver-spring/
 /observability-test-server/
+/observability-test-server-*/
 /observability-demo-scripts/

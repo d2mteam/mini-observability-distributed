@@ -26,9 +26,7 @@ public class TracingClientInterceptor implements ClientHttpRequestInterceptor {
     @Override
     public ClientHttpResponse intercept(HttpRequest request, byte[] body, ClientHttpRequestExecution exec)
             throws IOException {
-//        String endpoint = request.getMethod() + " " + request.getURI(); /placeholder
-
-        String endpoint = "HTTP";
+        String endpoint = request.getMethod() + " " + request.getURI();
         String host = request.getURI().getHost();
         String destination = host != null ? host : "unknown";
         Span span = tracer.nextSpan().name(endpoint).kind(Span.Kind.CLIENT)
@@ -39,10 +37,15 @@ public class TracingClientInterceptor implements ClientHttpRequestInterceptor {
         metrics.onRequestStart();
         long startNanos = System.nanoTime();
         boolean error = false;
-        try (var ws = tracer.withSpanInScope(span)) {
+        try (var ignored = tracer.withSpanInScope(span)) {
             propagator.inject(tracer.currentContext(), request.getHeaders(), HttpHeaders::add);
             ClientHttpResponse res = exec.execute(request, body);
-            span.tag("http.status_code", String.valueOf(res.getStatusCode().value()));
+            int status = res.getStatusCode().value();
+            span.tag("http.status_code", String.valueOf(status));
+            if (isErrorStatus(status)) {
+                error = true;
+                span.status(Span.Status.ERROR);
+            }
             return res;
         } catch (IOException | RuntimeException e) {
             error = true;
@@ -57,5 +60,9 @@ public class TracingClientInterceptor implements ClientHttpRequestInterceptor {
     }
 
     // String pattern = (String) request.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE);
+
+    private static boolean isErrorStatus(int status) {
+        return status >= 400;
+    }
 
 }
