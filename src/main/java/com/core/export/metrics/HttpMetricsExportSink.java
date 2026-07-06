@@ -1,5 +1,7 @@
 package com.core.export.metrics;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -11,6 +13,7 @@ import java.util.Objects;
 public class HttpMetricsExportSink implements MetricsExportSink {
     private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(5);
 
+    private final ObjectMapper mapper = new ObjectMapper();
     private final HttpClient httpClient;
     private final URI endpoint;
     private final Duration timeout;
@@ -30,15 +33,15 @@ public class HttpMetricsExportSink implements MetricsExportSink {
     }
 
     @Override
-    public void send(String json) {
-        Objects.requireNonNull(json, "json");
-        HttpRequest request = HttpRequest.newBuilder(endpoint)
-                .timeout(timeout)
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(json))
-                .build();
-
+    public void send(MetricsExport metricsExport) throws Exception {
+        Objects.requireNonNull(metricsExport, "metricsExport");
         try {
+            String json = mapper.writeValueAsString(metricsExport);
+            HttpRequest request = HttpRequest.newBuilder(endpoint)
+                    .timeout(timeout)
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(json))
+                    .build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 throw new IllegalStateException("metrics export failed: HTTP " + response.statusCode());

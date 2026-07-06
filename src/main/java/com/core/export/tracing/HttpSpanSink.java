@@ -1,5 +1,7 @@
 package com.core.export.tracing;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -10,6 +12,7 @@ import java.util.Objects;
 public class HttpSpanSink implements SpanSink {
     private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(5);
 
+    private final ObjectMapper mapper = new ObjectMapper();
     private final HttpClient httpClient;
     private final URI endpoint;
     private final Duration timeout;
@@ -29,8 +32,9 @@ public class HttpSpanSink implements SpanSink {
     }
 
     @Override
-    public void send(String json) throws Exception {
-        Objects.requireNonNull(json, "json");
+    public void send(SpanExport spanExport) throws Exception {
+        Objects.requireNonNull(spanExport, "spanExport");
+        String json = mapper.writeValueAsString(spanExport);
         HttpRequest request = HttpRequest.newBuilder(endpoint)
                 .timeout(timeout)
                 .header("Content-Type", "application/json")

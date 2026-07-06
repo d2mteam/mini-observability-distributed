@@ -3,8 +3,6 @@ package com.core.export.tracing;
 import com.core.export.ServiceIdentity;
 import com.core.tracing.Span;
 import com.core.tracing.handler.SpanHandler;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.ObjectWriter;
 import lombok.AccessLevel;
 import lombok.Builder;
 
@@ -24,7 +22,6 @@ public class SpanExporter implements SpanHandler, AutoCloseable {
     private final ArrayBlockingQueue<SpanRecord> queue;
     private final int batchSize;
     private final long maxDelayMillis;
-    private final ObjectWriter writer;
 
     // Mini-project tradeoff: approximate under high concurrency. Use LongAdder/AtomicLong later
     // if dropped span accounting becomes part of the public contract.
@@ -51,7 +48,6 @@ public class SpanExporter implements SpanHandler, AutoCloseable {
         this.queue = new ArrayBlockingQueue<>(queueCapacity);
         this.batchSize = batchSize;
         this.maxDelayMillis = maxDelayMillis;
-        this.writer = new ObjectMapper().writerWithDefaultPrettyPrinter();
     }
 
     @Builder(access = AccessLevel.PUBLIC)
@@ -168,7 +164,7 @@ public class SpanExporter implements SpanHandler, AutoCloseable {
                     serviceIdentity.instanceId(),
                     System.currentTimeMillis(),
                     records);
-            spanSink.send(writer.writeValueAsString(export));
+            spanSink.send(export);
         } catch (Exception ignored) {
             // Demo exporter: export failures must not break the observed application.
             // TODO: add retry/requeue/failure metrics if this grows beyond a mini project.

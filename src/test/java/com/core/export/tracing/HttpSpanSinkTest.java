@@ -1,5 +1,7 @@
 package com.core.export.tracing;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
@@ -16,6 +18,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class HttpSpanSinkTest {
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
     private final List<CapturedRequest> captured = new ArrayList<>();
     private HttpServer server;
 
@@ -31,14 +35,17 @@ class HttpSpanSinkTest {
         URI endpoint = startServer(202);
         HttpSpanSink sink = new HttpSpanSink(endpoint);
 
-        sink.send("{\"spans\":[]}");
+        sink.send(spanExport());
 
         assertEquals(1, captured.size());
         CapturedRequest request = captured.getFirst();
         assertEquals("POST", request.method());
         assertEquals("/spans", request.path());
         assertEquals("application/json", request.contentType());
-        assertEquals("{\"spans\":[]}", request.body());
+        JsonNode json = MAPPER.readTree(request.body());
+        assertEquals("orders", json.get("serviceName").asText());
+        assertEquals("instance-1", json.get("instanceId").asText());
+        assertEquals(0, json.get("spans").size());
     }
 
     @Test
@@ -46,7 +53,11 @@ class HttpSpanSinkTest {
         URI endpoint = startServer(503);
         HttpSpanSink sink = new HttpSpanSink(endpoint);
 
-        assertThrows(IllegalStateException.class, () -> sink.send("{\"spans\":[]}"));
+        assertThrows(IllegalStateException.class, () -> sink.send(spanExport()));
+    }
+
+    private static SpanExport spanExport() {
+        return new SpanExport("orders", "instance-1", 123, List.of());
     }
 
     private URI startServer(int statusCode) throws IOException {

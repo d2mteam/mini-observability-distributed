@@ -1,9 +1,13 @@
 package com.core.export.tracing;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectWriter;
+
 import java.io.PrintStream;
 import java.util.Objects;
 
 public class ConsoleSpanSink implements SpanSink {
+    private final ObjectWriter writer = new ObjectMapper().writerWithDefaultPrettyPrinter();
     private final PrintStream out;
 
     public ConsoleSpanSink() {
@@ -15,7 +19,7 @@ public class ConsoleSpanSink implements SpanSink {
     }
 
     @Override
-    public void send(String json) {
-        out.println(json);
+    public void send(SpanExport spanExport) throws Exception {
+        out.println(writer.writeValueAsString(Objects.requireNonNull(spanExport, "spanExport")));
     }
 }

@@ -3,7 +3,6 @@ package com.core.export.metrics;
 
 import com.core.export.ServiceIdentity;
 import com.core.metrics.MetricsRegistry;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.Builder;
 
 import java.util.concurrent.ScheduledExecutorService;
@@ -11,7 +10,6 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 public class MetricsPushExporter implements AutoCloseable {
-    private final ObjectMapper mapper = new ObjectMapper();
     private final ServiceIdentity serviceIdentity;
     private final MetricsExportSink metricsExportSink;
     private final MetricsRegistry metricsRegistry;
@@ -43,7 +41,7 @@ public class MetricsPushExporter implements AutoCloseable {
                 .capturedAtMillis(System.currentTimeMillis())
                 .snapshot(metricsRegistry.snapshot())
                 .build();
-        metricsExportSink.send(mapper.writeValueAsString(metricsExport));
+        metricsExportSink.send(metricsExport);
     }
 
     private void flushQuietly() {

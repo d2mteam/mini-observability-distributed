@@ -1,11 +1,10 @@
 package com.core.tracing.export;
 
 import com.core.export.ServiceIdentity;
+import com.core.export.tracing.SpanExport;
 import com.core.export.tracing.SpanExporter;
 import com.core.export.tracing.SpanSink;
 import com.core.tracing.Span;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -18,11 +17,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SpanExporterTest {
-    private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final ServiceIdentity IDENTITY = new ServiceIdentity("orders", "instance-1");
 
     @Test
-    void handleEnqueuesAndFlushExportsPrettyJsonBatch() throws Exception {
+    void handleEnqueuesAndFlushExportsBatch() {
         CapturingSpanSink sink = new CapturingSpanSink();
         SpanExporter exporter = exporter(sink, 10, 10, 50);
 
@@ -31,13 +29,11 @@ class SpanExporterTest {
 
         assertEquals(1, sink.payloads.size());
         assertEquals(0, exporter.droppedCount());
-        assertTrue(sink.payloads.get(0).contains("\n"), "expected pretty JSON");
-
-        JsonNode json = MAPPER.readTree(sink.payloads.get(0));
-        assertEquals("orders", json.get("serviceName").asText());
-        assertEquals("instance-1", json.get("instanceId").asText());
-        assertEquals(1, json.get("spans").size());
-        assertEquals("0000000000000001", json.get("spans").get(0).get("spanId").asText());
+        SpanExport export = sink.payloads.getFirst();
+        assertEquals("orders", export.serviceName());
+        assertEquals("instance-1", export.instanceId());
+        assertEquals(1, export.spans().size());
+        assertEquals("0000000000000001", export.spans().getFirst().spanId());
     }
 
     @Test
@@ -152,11 +148,11 @@ class SpanExporterTest {
     }
 
     private static class CapturingSpanSink implements SpanSink {
-        final List<String> payloads = new ArrayList<>();
+        final List<SpanExport> payloads = new ArrayList<>();
 
         @Override
-        public void send(String json) {
-            payloads.add(json);
+        public void send(SpanExport spanExport) {
+            payloads.add(spanExport);
         }
     }
 
@@ -168,8 +164,8 @@ class SpanExporterTest {
         }
 
         @Override
-        public void send(String json) {
-            super.send(json);
+        public void send(SpanExport spanExport) {
+            super.send(spanExport);
             latch.countDown();
         }
 
@@ -191,7 +187,7 @@ class SpanExporterTest {
         int calls;
 
         @Override
-        public void send(String json) {
+        public void send(SpanExport spanExport) {
             calls++;
             throw new IllegalStateException("sink down");
         }
