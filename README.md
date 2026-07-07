@@ -17,8 +17,8 @@ Thư viện Java mini cung cấp observability cho ứng dụng Java với mục
 
 ```mermaid
 classDiagram
-    class ProtocolInterceptor {
-        <<hook>>
+    class ProtocolInstrumentation {
+        <<instrumentation>>
         HTTP / JDBC / WebSocket
     }
 
@@ -65,8 +65,8 @@ classDiagram
         <<pull adapter>>
     }
 
-    ProtocolInterceptor --> Tracer : creates/finishes spans
-    ProtocolInterceptor --> MetricsRegistry : records metrics
+    ProtocolInstrumentation --> Tracer : creates/finishes spans
+    ProtocolInstrumentation --> MetricsRegistry : records metrics
     Tracer --> TraceContext : owns lifecycle
     Tracer --> Span : creates/finishes
     Tracer --> SpanDispatcher : dispatch finished spans
@@ -77,9 +77,41 @@ classDiagram
     MetricsSnapshot --> MetricsScrapeEndpoint : prometheus pull
 ```
 
-## Hook Và Adapter
+## Trace Context Và Luồng Hoạt Động
 
-Các hook nằm ở biên giao tiếp của ứng dụng:
+Thiết kế trace/span bám theo model quen thuộc của OpenTelemetry và Brave: span có context định danh, được đặt vào current scope khi xử lý, propagate qua biên service, rồi chỉ export khi đã finish.
+
+Trong project này, `Tracer` là lớp điều khiển vòng đời span. `TraceContext` là dữ liệu bất biến để propagate, tương ứng phần cốt lõi của OTel `SpanContext`/Brave `TraceContext`:
+
+- `traceId`: ID chung của toàn bộ request flow, 32 ký tự hex.
+- `spanId`: ID của một hop/công việc cụ thể, 16 ký tự hex.
+- `parentSpanId`: `spanId` của span cha; root span thì `null`.
+- `sampled`: tương ứng sampled flag trong trace flags; quyết định span có được export hay không, nhưng context vẫn được propagate.
+
+Luồng cơ bản:
+
+```text
+inbound request
+  extract traceparent nếu có
+  Tracer.nextSpan(remoteParent) -> server span mới
+  Tracer.withSpanInScope(span) -> đưa context vào ThreadLocal + MDC
+  xử lý nghiệp vụ / gọi DB / gọi service khác
+  Tracer.finishSpan(span) -> chốt duration và dispatch nếu sampled
+```
+
+Luồng này gần với Brave: `nextSpan()` lấy current span làm parent nếu có; `withSpanInScope()` chỉ đưa span vào current scope cho downstream code/log MDC nhìn thấy, còn `finishSpan()` là bước kết thúc/export riêng.
+
+Khi tạo span con trong cùng thread, `Tracer.nextSpan()` đọc context hiện tại từ `TraceContextHolder`: span mới giữ nguyên `traceId`, sinh `spanId` mới, và đặt `parentSpanId` bằng span hiện tại. Khi gọi service khác, outbound interceptor inject context hiện tại theo W3C `traceparent`:
+
+```text
+00-<traceId>-<spanId>-<flags>
+```
+
+Service nhận request extract header đó làm remote parent, rồi tạo server span mới cùng `traceId` và `parentSpanId` trỏ về span upstream. Với WebSocket/STOMP, context lấy từ handshake hoặc native header được giữ trong session/message handling để mỗi message vẫn nối được vào trace.
+
+## Instrumentation Và Output Adapter
+
+Các instrumentation nằm ở biên giao tiếp của ứng dụng:
 
 - `TracingFilter`: nhận HTTP inbound, extract trace context, tạo server span.
 - `TracingClientInterceptor`: chặn HTTP outbound, inject trace context.
@@ -87,10 +119,14 @@ Các hook nằm ở biên giao tiếp của ứng dụng:
 - `StompTracingChannelInterceptor`: tạo span theo từng STOMP message.
 - `WebSocketSessionMetricsListener`: đếm active WebSocket connections bằng session lifecycle.
 
-Các adapter xuất dữ liệu tách khỏi core:
+Các output adapter/exporter xuất dữ liệu tách khỏi core:
 
-- Span: console, HTTP receiver, Zipkin, Elasticsearch.
-- Metrics: HTTP receiver, Elasticsearch push, Prometheus pull endpoint.
+- Trace export: `SpanExporter` nhận span đã finish và chuyển ra ngoài qua `SpanSink`.
+  Các sink hiện có: `ConsoleSpanSink`, `HttpSpanSink`, `ZipkinSpanSink`, `ElasticsearchSpanSink`.
+- Metrics push: `MetricsPushExporter` lấy snapshot từ registry và gửi qua `MetricsExportSink`.
+  Các sink hiện có: `ConsoleMetricsExportSink`, `HttpMetricsExportSink`, `ElasticsearchMetricsExportSink`.
+- Metrics pull: `MetricsScrapeEndpoint` dùng cho hướng backend scrape dữ liệu.
+  Endpoint hiện có: `PrometheusMetricsScrapeEndpoint`; phần format text nằm trong `PrometheusTextFormatter`.
 
 Nhờ vậy core không phụ thuộc Prometheus, Zipkin, ELK hay UI tự viết.
 
@@ -100,134 +136,191 @@ Project đang có vài kiểu output chính:
 
 - **Console sink**: ghi JSON ra console, phù hợp để debug nhanh.
 - **HTTP push sink**: thư viện chủ động gửi `SpanExport` hoặc `MetricsExport` sang receiver tự viết.
-- **Backend-specific sink**: sink tự đổi format theo backend, ví dụ Zipkin nhận span format riêng, Elasticsearch nhận NDJSON qua Bulk API.
+- **Backend-specific sink**: sink tự đổi object nội bộ sang format backend cần.
 - **Pull endpoint**: dùng cho Prometheus, app mở `/metrics` để Prometheus scrape thay vì thư viện tự push.
 - **Receiver UI demo**: server riêng nhận dữ liệu JSON và hiển thị trực quan, dùng để chứng minh output độc lập với backend monitoring cụ thể.
 
 Điểm quan trọng là sink/endpoint chỉ là lớp ngoài. Core không cần biết dữ liệu cuối cùng đi vào Zipkin, Prometheus, ELK hay UI tự viết.
 
-## Ví Dụ Dữ Liệu Xuất Ra
+## Ví Dụ Định Dạng Và Liên Kết Span
 
-Span export gốc của project là JSON có cấu trúc. Mỗi span có `traceId`, `spanId`, `parentSpanId`, thời gian, trạng thái và attributes:
+### 1. Span Trong Một Service Call
+
+Ví dụ service B nhận request từ service A, xử lý `/process`, rồi gọi JDBC trong cùng request:
+
+```text
+service-b SERVER  GET /process
+  service-b CLIENT  JDBC INSERT
+  service-b CLIENT  JDBC SELECT
+```
+
+JSON trace export của service B:
 
 ```json
 {
-  "serviceName": "demo-service-a",
-  "instanceId": "local-a-1",
+  "serviceName": "demo-service-b",
+  "instanceId": "local-b-1",
+  "capturedAtMillis": 1783390655220,
   "spans": [
     {
       "traceId": "a2061e4a49ed0708cfe5f3bf9727b64f",
-      "spanId": "69952c75d9897fe7",
-      "parentSpanId": null,
-      "name": "GET /scenario/success",
+      "spanId": "b-server",
+      "parentSpanId": "a-client",
+      "name": "GET /process",
       "kind": "SERVER",
-      "durationMillis": 240,
+      "startEpochMillis": 1783390655178,
+      "startNanos": 4419938123000,
+      "durationMillis": 42,
       "status": "OK",
+      "sampled": true,
       "attributes": {
         "protocol": "http",
         "http.status_code": "200"
       }
-    }
-  ]
-}
-```
-
-Khi service A gọi sang B rồi B gọi sang C, các span nối nhau bằng cùng `traceId` và `parentSpanId`:
-
-```text
-traceId = a206...
-
-demo-service-a  SERVER  GET /scenario/success
-  demo-service-a  CLIENT  GET http://localhost:8082/process
-    demo-service-b  SERVER  GET /process
-      demo-service-b  CLIENT  GET http://localhost:8083/compute
-        demo-service-c  SERVER  GET /compute
-          demo-service-c  CLIENT  JDBC SELECT
-```
-
-Metrics export gốc là snapshot theo server endpoint và client destination. Khi xuất sang Prometheus, cùng dữ liệu được đổi thành text format:
-
-```text
-mini_server_requests_total{service="demo-service-a",instance="local-a-1",route="GET /ping"} 42
-mini_client_calls_total{service="demo-service-a",instance="local-a-1",destination="localhost:8082"} 10
-mini_server_request_latency_p95_millis{service="demo-service-a",instance="local-a-1",route="GET /flow"} 180
-```
-
-Với Zipkin hoặc Elasticsearch, sink sẽ tự chuyển cùng dữ liệu sang format backend đó cần. Core vẫn giữ model riêng, không nhúng format backend vào tracer hoặc metrics registry.
-
-## Ví Dụ Dữ Liệu Xuất Ra
-
-Span export nội bộ dùng JSON có cấu trúc:
-
-```json
-{
-  "serviceName": "demo-service-a",
-  "instanceId": "local-a-1",
-  "capturedAtMillis": 1783390655211,
-  "spans": [
+    },
     {
-      "traceId": "78b52b7797bb73d6105ea74677294da8",
-      "spanId": "0f519f9c72acf53d",
-      "parentSpanId": "69952c75d9897fe7",
-      "name": "GET /scenario/fail-b",
-      "kind": "SERVER",
-      "durationMillis": 99,
-      "status": "ERROR",
+      "traceId": "a2061e4a49ed0708cfe5f3bf9727b64f",
+      "spanId": "b-jdbc-insert",
+      "parentSpanId": "b-server",
+      "name": "JDBC INSERT",
+      "kind": "CLIENT",
+      "startEpochMillis": 1783390655190,
+      "startNanos": 4419950321000,
+      "durationMillis": 3,
+      "status": "OK",
+      "sampled": true,
       "attributes": {
-        "protocol": "http",
-        "http.status_code": "503"
+        "protocol": "jdbc",
+        "db.operation": "INSERT"
+      }
+    },
+    {
+      "traceId": "a2061e4a49ed0708cfe5f3bf9727b64f",
+      "spanId": "b-jdbc-select",
+      "parentSpanId": "b-server",
+      "name": "JDBC SELECT",
+      "kind": "CLIENT",
+      "startEpochMillis": 1783390655200,
+      "startNanos": 4419960100000,
+      "durationMillis": 1,
+      "status": "OK",
+      "sampled": true,
+      "attributes": {
+        "protocol": "jdbc",
+        "db.operation": "SELECT"
       }
     }
   ]
 }
 ```
 
-Metrics export nội bộ tách rõ server endpoint và client call:
+Quan hệ span:
+
+```text
+b-server
+  b-jdbc-insert
+  b-jdbc-select
+```
+
+### 2. Ghép Span Giữa Nhiều Server
+
+Khi service A gọi sang service B, A inject trace context vào request outbound. B extract context đó, nên server span của B trỏ về client span của A:
+
+```text
+traceId = a2061e4a49ed0708cfe5f3bf9727b64f
+
+a-server  service-a SERVER  GET /flow
+  a-client  service-a CLIENT  GET http://service-b/process
+    b-server  service-b SERVER  GET /process
+      b-jdbc-insert  service-b CLIENT  JDBC INSERT
+      b-jdbc-select  service-b CLIENT  JDBC SELECT
+```
+
+Dữ liệu có thể nằm ở nhiều payload riêng:
 
 ```json
 {
   "serviceName": "demo-service-a",
+  "spans": [
+    {
+      "traceId": "a2061e4a49ed0708cfe5f3bf9727b64f",
+      "spanId": "a-server",
+      "parentSpanId": null,
+      "name": "GET /flow",
+      "kind": "SERVER"
+    },
+    {
+      "traceId": "a2061e4a49ed0708cfe5f3bf9727b64f",
+      "spanId": "a-client",
+      "parentSpanId": "a-server",
+      "name": "GET http://service-b/process",
+      "kind": "CLIENT"
+    }
+  ]
+}
+```
+
+```json
+{
+  "serviceName": "demo-service-b",
+  "spans": [
+    {
+      "traceId": "a2061e4a49ed0708cfe5f3bf9727b64f",
+      "spanId": "b-server",
+      "parentSpanId": "a-client",
+      "name": "GET /process",
+      "kind": "SERVER"
+    },
+    {
+      "traceId": "a2061e4a49ed0708cfe5f3bf9727b64f",
+      "spanId": "b-jdbc-select",
+      "parentSpanId": "b-server",
+      "name": "JDBC SELECT",
+      "kind": "CLIENT"
+    }
+  ]
+}
+```
+
+Trace được nối bằng `traceId`, `spanId` và `parentSpanId`.
+
+### 3. Metrics JSON Của Cùng Flow
+
+Metrics snapshot của service B:
+
+```json
+{
+  "serviceName": "demo-service-b",
+  "instanceId": "local-b-1",
+  "capturedAtMillis": 1783390673139,
   "snapshot": {
-    "inFlightRequests": 0,
+    "inFlightRequests": 1,
     "serverEndpoints": {
-      "GET /ping": {
-        "count": 10,
-        "errors": 0,
-        "p95Millis": 4
+      "GET /process": {
+        "count": 120,
+        "errors": 3,
+        "slow": 9,
+        "totalBytes": 48000,
+        "activeConnections": 0,
+        "p50Millis": 18,
+        "p95Millis": 95,
+        "p99Millis": 180
       }
     },
     "clientCalls": {
-      "localhost:8082": {
-        "count": 5,
-        "errors": 1,
-        "p95Millis": 120
+      "jdbc": {
+        "count": 240,
+        "errors": 2,
+        "slow": 4,
+        "totalBytes": 0,
+        "activeConnections": 0,
+        "p50Millis": 2,
+        "p95Millis": 8,
+        "p99Millis": 20
       }
-    }
-  }
-}
-```
-
-Prometheus dùng text format để scrape:
-
-```text
-mini_server_requests_total{service="demo-service-a",instance="local-a-1",route="GET /ping"} 10
-mini_client_calls_total{service="demo-service-a",instance="local-a-1",destination="localhost:8082"} 5
-```
-
-Elasticsearch sink chuyển dữ liệu thành document dễ search trong Kibana:
-
-```json
-{
-  "@timestamp": "2026-07-07T02:17:35.211Z",
-  "service": { "name": "demo-service-a" },
-  "trace": { "id": "78b52b7797bb73d6105ea74677294da8" },
-  "span": { "id": "0f519f9c72acf53d", "name": "GET /scenario/fail-b" },
-  "mini_span": {
-    "status": "ERROR",
-    "duration_millis": 99,
-    "attributes": {
-      "protocol": "http",
-      "http.status_code": "503"
+    },
+    "consecutiveFailures": {
+      "jdbc": 0
     }
   }
 }
@@ -243,12 +336,11 @@ Elasticsearch sink chuyển dữ liệu thành document dễ search trong Kibana
 
 ## Đánh Đổi
 
-- Chưa có retry phức tạp, auth backend, index template, sampling nâng cao hay xử lý concurrency đầy đủ.
+- Chưa có retry phức tạp, auth backend, sampling nâng cao hay xử lý concurrency đầy đủ.
 - Metrics hiện là snapshot nội bộ, không phải data model đầy đủ như OpenTelemetry Metrics.
 - Trace UI/analysis nâng cao vẫn nên để backend chuyên dụng như Zipkin hoặc hệ ELK đảm nhiệm.
 - Một số interceptor mới dừng ở case demo phổ biến trên Spring Boot, chưa bao phủ toàn bộ framework Java.
-- Các sink hiện ưu tiên dễ đọc: chưa parse lỗi chi tiết từng item trong bulk response, chưa có backpressure/requeue phức tạp, chưa có schema migration cho backend.
-- Prometheus endpoint chỉ expose text format từ dữ liệu đang có; latency percentile là gauge, chưa phải histogram chuẩn vì core chưa expose bucket/count/sum.
+- Các adapter hiện ưu tiên dễ đọc và phục vụ demo, chưa xử lý đầy đủ các tình huống vận hành production.
 
 ## Kết Luận
 
