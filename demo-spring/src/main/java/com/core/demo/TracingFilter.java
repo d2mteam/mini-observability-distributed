@@ -31,7 +31,7 @@ public class TracingFilter extends OncePerRequestFilter {
         TraceContext parent = propagator.extract(req, HttpServletRequest::getHeader);
         Span span = tracer.nextSpan(parent).kind(Span.Kind.SERVER);
 
-        metrics.onRequestStart();
+        metrics.onServerRequestStart();
         long startNanos = System.nanoTime();
         boolean error = false;
         try (var ws = tracer.withSpanInScope(span)) {
@@ -58,7 +58,7 @@ public class TracingFilter extends OncePerRequestFilter {
                 span.tag("http.response.size", String.valueOf(responseBytes));
             }
             tracer.finishSpan(span);
-            metrics.onRequestEnd(endpoint, durationMs, requestError, Math.max(0, req.getContentLengthLong()));
+            metrics.onServerRequestEnd(endpoint, durationMs, requestError, Math.max(0, req.getContentLengthLong()));
         }
     }
 

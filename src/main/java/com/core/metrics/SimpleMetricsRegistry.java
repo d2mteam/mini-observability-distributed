@@ -6,7 +6,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class SimpleMetricsRegistry implements MetricsRegistry {
-    private final ConcurrentHashMap<String, EndpointStats> byEndpoint = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, EndpointStats> serverEndpoints = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, EndpointStats> clientCalls = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, AtomicLong> consecutiveFailures = new ConcurrentHashMap<>();
     private final AtomicLong inFlight = new AtomicLong();
     private final MetricsConfig config;
@@ -20,24 +21,35 @@ public class SimpleMetricsRegistry implements MetricsRegistry {
     }
 
     @Override
-    public void onRequestStart() {
+    public void onServerRequestStart() {
         inFlight.incrementAndGet();
     }
 
     @Override
-    public void onRequestEnd(String endpoint, long durationMillis, boolean error, long bytes) {
+    public void onServerRequestEnd(String route, long durationMillis, boolean error, long bytes) {
         inFlight.decrementAndGet();
-        stats(endpoint).record(durationMillis, error, bytes, config.slowThresholdMillis());
+        serverStats(route).record(durationMillis, error, bytes, config.slowThresholdMillis());
+    }
+
+    @Override
+    public void onClientCallStart() {
+        inFlight.incrementAndGet();
+    }
+
+    @Override
+    public void onClientCallEnd(String destination, long durationMillis, boolean error, long bytes) {
+        inFlight.decrementAndGet();
+        clientStats(destination).record(durationMillis, error, bytes, config.slowThresholdMillis());
     }
 
     @Override
     public void onConnectionOpened(String endpoint) {
-        stats(endpoint).connectionOpened();
+        serverStats(endpoint).connectionOpened();
     }
 
     @Override
     public void onConnectionClosed(String endpoint) {
-        EndpointStats s = byEndpoint.get(endpoint);
+        EndpointStats s = serverEndpoints.get(endpoint);
         if (s != null) s.connectionClosed();
     }
 
@@ -50,14 +62,20 @@ public class SimpleMetricsRegistry implements MetricsRegistry {
 
     @Override
     public MetricsSnapshot snapshot() {
-        Map<String, MetricsSnapshot.Endpoint> endpoints = new LinkedHashMap<>();
-        byEndpoint.forEach((endpoint, stats) -> endpoints.put(endpoint, stats.snapshot()));
+        Map<String, MetricsSnapshot.Endpoint> servers = new LinkedHashMap<>();
+        serverEndpoints.forEach((endpoint, stats) -> servers.put(endpoint, stats.snapshot()));
+        Map<String, MetricsSnapshot.Endpoint> clients = new LinkedHashMap<>();
+        clientCalls.forEach((destination, stats) -> clients.put(destination, stats.snapshot()));
         Map<String, Long> failures = new LinkedHashMap<>();
         consecutiveFailures.forEach((destination, streak) -> failures.put(destination, streak.get()));
-        return new MetricsSnapshot(inFlight.get(), endpoints, failures);
+        return new MetricsSnapshot(inFlight.get(), servers, clients, failures);
     }
 
-    private EndpointStats stats(String endpoint) {
-        return byEndpoint.computeIfAbsent(endpoint, key -> new EndpointStats());
+    private EndpointStats serverStats(String endpoint) {
+        return serverEndpoints.computeIfAbsent(endpoint, key -> new EndpointStats());
+    }
+
+    private EndpointStats clientStats(String destination) {
+        return clientCalls.computeIfAbsent(destination, key -> new EndpointStats());
     }
 }

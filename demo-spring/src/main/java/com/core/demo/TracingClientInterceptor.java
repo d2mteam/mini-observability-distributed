@@ -11,6 +11,7 @@ import org.springframework.http.client.ClientHttpRequestInterceptor;
 import org.springframework.http.client.ClientHttpResponse;
 
 import java.io.IOException;
+import java.net.URI;
 
 public class TracingClientInterceptor implements ClientHttpRequestInterceptor {
     private final Tracer tracer;
@@ -27,14 +28,13 @@ public class TracingClientInterceptor implements ClientHttpRequestInterceptor {
     public ClientHttpResponse intercept(HttpRequest request, byte[] body, ClientHttpRequestExecution exec)
             throws IOException {
         String endpoint = request.getMethod() + " " + request.getURI();
-        String host = request.getURI().getHost();
-        String destination = host != null ? host : "unknown";
+        String destination = destination(request.getURI());
         Span span = tracer.nextSpan().name(endpoint).kind(Span.Kind.CLIENT)
                 .tag("protocol", "http")
                 .tag("server.address", destination)
                 .tag("http.request.size", String.valueOf(body.length));
 
-        metrics.onRequestStart();
+        metrics.onClientCallStart();
         long startNanos = System.nanoTime();
         boolean error = false;
         try (var ignored = tracer.withSpanInScope(span)) {
@@ -54,7 +54,7 @@ public class TracingClientInterceptor implements ClientHttpRequestInterceptor {
         } finally {
             long durationMs = (System.nanoTime() - startNanos) / 1_000_000;
             tracer.finishSpan(span);
-            metrics.onRequestEnd(endpoint, durationMs, error, body.length);
+            metrics.onClientCallEnd(destination, durationMs, error, body.length);
             metrics.onDestinationResult(destination, !error);
         }
     }
@@ -63,6 +63,15 @@ public class TracingClientInterceptor implements ClientHttpRequestInterceptor {
 
     private static boolean isErrorStatus(int status) {
         return status >= 400;
+    }
+
+    private static String destination(URI uri) {
+        String host = uri.getHost();
+        if (host == null || host.isBlank()) {
+            return "unknown";
+        }
+        int port = uri.getPort();
+        return port > 0 ? host + ":" + port : host;
     }
 
 }

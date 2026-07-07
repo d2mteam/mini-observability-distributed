@@ -4,7 +4,8 @@ import java.util.Map;
 
 public record MetricsSnapshot(
         long inFlightRequests,
-        Map<String, Endpoint> endpoints,
+        Map<String, Endpoint> serverEndpoints,
+        Map<String, Endpoint> clientCalls,
         Map<String, Long> consecutiveFailures) {
 
     public record Endpoint(long count, long errors, long slow, long totalBytes,
@@ -16,6 +17,6 @@ public record MetricsSnapshot(
     }
 
     public static MetricsSnapshot empty() {
-        return new MetricsSnapshot(0, Map.of(), Map.of());
+        return new MetricsSnapshot(0, Map.of(), Map.of(), Map.of());
     }
 }

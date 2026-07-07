@@ -39,7 +39,7 @@ public class JdbcTracingQueryExecutionListener implements QueryExecutionListener
             span.tag("db.statement", sql);
         }
 
-        metrics.onRequestStart();
+        metrics.onClientCallStart();
         current.set(new JdbcSpanScope(span, tracer.withSpanInScope(span)));
     }
 
@@ -58,7 +58,7 @@ public class JdbcTracingQueryExecutionListener implements QueryExecutionListener
                 scope.span().error(execInfo.getThrowable());
             }
             tracer.finishSpan(scope.span());
-            metrics.onRequestEnd(scope.span().getName(), durationMillis, error, 0);
+            metrics.onClientCallEnd(jdbcDestination(), durationMillis, error, 0);
         } finally {
             scope.close();
         }
@@ -85,6 +85,10 @@ public class JdbcTracingQueryExecutionListener implements QueryExecutionListener
             return null;
         }
         return value.trim();
+    }
+
+    private String jdbcDestination() {
+        return dbSystem != null ? dbSystem : "jdbc";
     }
 
     private record JdbcSpanScope(Span span, Tracer.SpanInScope scope) implements AutoCloseable {

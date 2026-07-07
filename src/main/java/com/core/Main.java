@@ -123,10 +123,10 @@ public class Main {
         var metrics = new SimpleMetricsRegistry(new MetricsConfig(2));   // slow > 2ms
 
         for (int i = 0; i < 100; i++) {
-            metrics.onRequestStart();
+            metrics.onServerRequestStart();
             long durationMs = (long) (Math.random() * 5);   // 0..4 ms
             boolean error = i % 20 == 0;                     // ~5% lỗi
-            metrics.onRequestEnd("GET /users", durationMs, error, 512);
+            metrics.onServerRequestEnd("GET /users", durationMs, error, 512);
         }
         metrics.onConnectionOpened("/ws/chat");
         metrics.onConnectionOpened("/ws/chat");
