@@ -46,4 +46,7 @@ bin/
 /observability-receiver-spring/
 /observability-test-server/
 /observability-test-server-*/
+/chat-gateway/
+/message-service/
+/presence-service/
 /observability-demo-scripts/

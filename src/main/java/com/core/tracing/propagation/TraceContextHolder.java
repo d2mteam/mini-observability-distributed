@@ -10,7 +10,19 @@ public class TraceContextHolder {
     }
 
     public static void set(TraceContext traceContext) {
+        if (traceContext == null) {
+            clear();
+            return;
+        }
         CURRENT.set(traceContext);
+        MDC.put("traceId", traceContext.traceId());
+        MDC.put("spanId", traceContext.spanId());
+    }
+
+    public static void clear() {
+        CURRENT.remove();
+        MDC.remove("traceId");
+        MDC.remove("spanId");
     }
 
     public static Scope newScope(TraceContext context) {
