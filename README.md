@@ -106,6 +106,133 @@ Project đang có vài kiểu output chính:
 
 Điểm quan trọng là sink/endpoint chỉ là lớp ngoài. Core không cần biết dữ liệu cuối cùng đi vào Zipkin, Prometheus, ELK hay UI tự viết.
 
+## Ví Dụ Dữ Liệu Xuất Ra
+
+Span export gốc của project là JSON có cấu trúc. Mỗi span có `traceId`, `spanId`, `parentSpanId`, thời gian, trạng thái và attributes:
+
+```json
+{
+  "serviceName": "demo-service-a",
+  "instanceId": "local-a-1",
+  "spans": [
+    {
+      "traceId": "a2061e4a49ed0708cfe5f3bf9727b64f",
+      "spanId": "69952c75d9897fe7",
+      "parentSpanId": null,
+      "name": "GET /scenario/success",
+      "kind": "SERVER",
+      "durationMillis": 240,
+      "status": "OK",
+      "attributes": {
+        "protocol": "http",
+        "http.status_code": "200"
+      }
+    }
+  ]
+}
+```
+
+Khi service A gọi sang B rồi B gọi sang C, các span nối nhau bằng cùng `traceId` và `parentSpanId`:
+
+```text
+traceId = a206...
+
+demo-service-a  SERVER  GET /scenario/success
+  demo-service-a  CLIENT  GET http://localhost:8082/process
+    demo-service-b  SERVER  GET /process
+      demo-service-b  CLIENT  GET http://localhost:8083/compute
+        demo-service-c  SERVER  GET /compute
+          demo-service-c  CLIENT  JDBC SELECT
+```
+
+Metrics export gốc là snapshot theo server endpoint và client destination. Khi xuất sang Prometheus, cùng dữ liệu được đổi thành text format:
+
+```text
+mini_server_requests_total{service="demo-service-a",instance="local-a-1",route="GET /ping"} 42
+mini_client_calls_total{service="demo-service-a",instance="local-a-1",destination="localhost:8082"} 10
+mini_server_request_latency_p95_millis{service="demo-service-a",instance="local-a-1",route="GET /flow"} 180
+```
+
+Với Zipkin hoặc Elasticsearch, sink sẽ tự chuyển cùng dữ liệu sang format backend đó cần. Core vẫn giữ model riêng, không nhúng format backend vào tracer hoặc metrics registry.
+
+## Ví Dụ Dữ Liệu Xuất Ra
+
+Span export nội bộ dùng JSON có cấu trúc:
+
+```json
+{
+  "serviceName": "demo-service-a",
+  "instanceId": "local-a-1",
+  "capturedAtMillis": 1783390655211,
+  "spans": [
+    {
+      "traceId": "78b52b7797bb73d6105ea74677294da8",
+      "spanId": "0f519f9c72acf53d",
+      "parentSpanId": "69952c75d9897fe7",
+      "name": "GET /scenario/fail-b",
+      "kind": "SERVER",
+      "durationMillis": 99,
+      "status": "ERROR",
+      "attributes": {
+        "protocol": "http",
+        "http.status_code": "503"
+      }
+    }
+  ]
+}
+```
+
+Metrics export nội bộ tách rõ server endpoint và client call:
+
+```json
+{
+  "serviceName": "demo-service-a",
+  "snapshot": {
+    "inFlightRequests": 0,
+    "serverEndpoints": {
+      "GET /ping": {
+        "count": 10,
+        "errors": 0,
+        "p95Millis": 4
+      }
+    },
+    "clientCalls": {
+      "localhost:8082": {
+        "count": 5,
+        "errors": 1,
+        "p95Millis": 120
+      }
+    }
+  }
+}
+```
+
+Prometheus dùng text format để scrape:
+
+```text
+mini_server_requests_total{service="demo-service-a",instance="local-a-1",route="GET /ping"} 10
+mini_client_calls_total{service="demo-service-a",instance="local-a-1",destination="localhost:8082"} 5
+```
+
+Elasticsearch sink chuyển dữ liệu thành document dễ search trong Kibana:
+
+```json
+{
+  "@timestamp": "2026-07-07T02:17:35.211Z",
+  "service": { "name": "demo-service-a" },
+  "trace": { "id": "78b52b7797bb73d6105ea74677294da8" },
+  "span": { "id": "0f519f9c72acf53d", "name": "GET /scenario/fail-b" },
+  "mini_span": {
+    "status": "ERROR",
+    "duration_millis": 99,
+    "attributes": {
+      "protocol": "http",
+      "http.status_code": "503"
+    }
+  }
+}
+```
+
 ## Điểm Mạnh
 
 - Vai trò tương đối rõ: interceptor thu thập, tracer quản lý span lifecycle, registry giữ metrics, sink/endpoint lo xuất dữ liệu.
