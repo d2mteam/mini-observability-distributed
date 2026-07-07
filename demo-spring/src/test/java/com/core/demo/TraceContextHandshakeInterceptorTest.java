@@ -1,5 +1,6 @@
 package com.core.demo;
 
+import com.core.demo.websocket.TraceContextHandshakeInterceptor;
 import com.core.tracing.propagation.Propagator;
 import com.core.tracing.propagation.TraceContext;
 import org.junit.jupiter.api.Test;

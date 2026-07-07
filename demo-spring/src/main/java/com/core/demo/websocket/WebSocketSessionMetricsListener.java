@@ -1,4 +1,4 @@
-package com.core.demo;
+package com.core.demo.websocket;
 
 import com.core.metrics.MetricsRegistry;
 import org.springframework.context.event.EventListener;

@@ -1,5 +1,7 @@
 package com.core.demo;
 
+import com.core.demo.http.TracingClientInterceptor;
+import com.core.demo.http.TracingFilter;
 import com.core.metrics.MetricsRegistry;
 import com.core.tracing.Sampler.Sampler;
 import com.core.tracing.SpanDispatcher;

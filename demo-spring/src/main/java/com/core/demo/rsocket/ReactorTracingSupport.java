@@ -1,4 +1,4 @@
-package com.core.demo;
+package com.core.demo.rsocket;
 
 import io.micrometer.context.ContextRegistry;
 import reactor.core.publisher.Hooks;

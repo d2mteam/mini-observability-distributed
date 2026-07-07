@@ -1,4 +1,4 @@
-package com.core.demo;
+package com.core.demo.rsocket;
 
 import com.core.metrics.MetricsRegistry;
 import com.core.tracing.Span;

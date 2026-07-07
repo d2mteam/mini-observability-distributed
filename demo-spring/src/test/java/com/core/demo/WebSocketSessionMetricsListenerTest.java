@@ -1,5 +1,6 @@
 package com.core.demo;
 
+import com.core.demo.websocket.WebSocketSessionMetricsListener;
 import com.core.metrics.MetricsRegistry;
 import org.junit.jupiter.api.Test;
 import org.springframework.messaging.Message;

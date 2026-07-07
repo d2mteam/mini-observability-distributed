@@ -1,4 +1,4 @@
-package com.core.demo;
+package com.core.demo.rsocket;
 
 import com.core.tracing.propagation.Propagator;
 import com.core.tracing.propagation.TraceContext;

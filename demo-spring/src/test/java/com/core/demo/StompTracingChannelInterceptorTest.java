@@ -1,5 +1,7 @@
 package com.core.demo;
 
+import com.core.demo.websocket.StompTracingChannelInterceptor;
+import com.core.demo.websocket.TraceContextHandshakeInterceptor;
 import com.core.tracing.Sampler.Sampler;
 import com.core.tracing.Span;
 import com.core.tracing.SpanDispatcher;

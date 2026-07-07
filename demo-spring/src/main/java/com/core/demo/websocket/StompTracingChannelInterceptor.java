@@ -1,4 +1,4 @@
-package com.core.demo;
+package com.core.demo.websocket;
 
 import com.core.tracing.Span;
 import com.core.tracing.Tracer;
