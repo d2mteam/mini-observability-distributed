@@ -18,6 +18,9 @@ dependencies {
     compileOnly 'org.springframework:spring-messaging:7.0.7'  // STOMP ChannelInterceptor
     compileOnly 'org.springframework:spring-websocket:7.0.7'  // HandshakeInterceptor, session events
     compileOnly 'org.springframework:spring-context:6.2.7'    // EnvironmentAware (GenericFilterBean kế thừa gián tiếp)
+    compileOnly 'org.springframework:spring-beans:7.0.7'
+    compileOnly 'org.springframework.boot:spring-boot:3.5.15'
+    compileOnly 'org.springframework.boot:spring-boot-autoconfigure:3.5.15'
     compileOnly 'jakarta.servlet:jakarta.servlet-api:6.0.0'    // HttpServletRequest/Response, FilterChain
     implementation 'net.ttddyy:datasource-proxy:1.11.0'
 
@@ -28,6 +31,7 @@ dependencies {
 
     testImplementation platform('org.junit:junit-bom:5.10.0')
     testImplementation 'org.junit.jupiter:junit-jupiter'
+    testImplementation 'org.assertj:assertj-core:3.26.3'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 
     testImplementation 'org.springframework:spring-web:7.0.7'
@@ -36,6 +40,9 @@ dependencies {
     testImplementation 'org.springframework:spring-websocket:7.0.7'
     testImplementation 'org.springframework:spring-context:7.0.7'
     testImplementation 'org.springframework:spring-test:7.0.7'
+    testImplementation 'org.springframework.boot:spring-boot:3.5.15'
+    testImplementation 'org.springframework.boot:spring-boot-autoconfigure:3.5.15'
+    testImplementation 'org.springframework.boot:spring-boot-test:3.5.15'
     testImplementation 'jakarta.servlet:jakarta.servlet-api:6.0.0'
 
     testImplementation 'io.rsocket:rsocket-core:1.1.5'
