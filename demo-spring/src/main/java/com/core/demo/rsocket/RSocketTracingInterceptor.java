@@ -78,16 +78,22 @@ public final class RSocketTracingInterceptor implements RSocketInterceptor {
     private void endClient(Interaction interaction, long startNanos, SignalType signal) {
         long durationMillis = (System.nanoTime() - startNanos) / 1_000_000;
         boolean error = signal == SignalType.ON_ERROR;
+        tagResponseBytes(interaction);
         tracer.finishSpan(interaction.span);
-        metrics.onClientCallEnd(remoteName, durationMillis, error, interaction.bytes);
+        metrics.onClientCallEnd(remoteName, durationMillis, error, interaction.totalBytes());
         metrics.onDestinationResult(remoteName, !error);
     }
 
     private void endServer(Interaction interaction, long startNanos, SignalType signal) {
         long durationMillis = (System.nanoTime() - startNanos) / 1_000_000;
         boolean error = signal == SignalType.ON_ERROR;
+        tagResponseBytes(interaction);
         tracer.finishSpan(interaction.span);
-        metrics.onServerRequestEnd(interaction.route, durationMillis, error, interaction.bytes);
+        metrics.onServerRequestEnd(interaction.route, durationMillis, error, interaction.totalBytes());
+    }
+
+    private static void tagResponseBytes(Interaction interaction) {
+        interaction.span.tag("messaging.response.payload_size_bytes", String.valueOf(interaction.responseBytes));
     }
 
     private static TraceContext contextOf(Span span) {
@@ -99,14 +105,25 @@ public final class RSocketTracingInterceptor implements RSocketInterceptor {
         private final TraceContext context;
         private final Payload outbound;
         private final String route;
-        private final int bytes;
+        private final int requestBytes;
+        private long responseBytes;
 
         private Interaction(Span span, TraceContext context, Payload outbound, String route, int bytes) {
             this.span = span;
             this.context = context;
             this.outbound = outbound;
             this.route = route;
-            this.bytes = bytes;
+            this.requestBytes = bytes;
+        }
+
+        private void recordResponse(Payload payload) {
+            if (payload != null) {
+                responseBytes += payload.data().readableBytes();
+            }
+        }
+
+        private long totalBytes() {
+            return requestBytes + responseBytes;
         }
     }
 
@@ -141,6 +158,7 @@ public final class RSocketTracingInterceptor implements RSocketInterceptor {
                     Interaction interaction = startClient(payload, view);
                     long startNanos = System.nanoTime();
                     return super.requestResponse(interaction.outbound)
+                            .doOnNext(interaction::recordResponse)
                             .doOnError(interaction.span::error)
                             .doFinally(signal -> endClient(interaction, startNanos, signal));
                 });
@@ -148,6 +166,7 @@ public final class RSocketTracingInterceptor implements RSocketInterceptor {
             Interaction interaction = startServer(payload);
             long startNanos = System.nanoTime();
             return super.requestResponse(payload)
+                    .doOnNext(interaction::recordResponse)
                     .doOnError(interaction.span::error)
                     .doFinally(signal -> endServer(interaction, startNanos, signal))
                     .contextWrite(ctx -> ctx.put(TraceContextThreadLocalAccessor.KEY, interaction.context));
@@ -160,6 +179,7 @@ public final class RSocketTracingInterceptor implements RSocketInterceptor {
                     Interaction interaction = startClient(payload, view);
                     long startNanos = System.nanoTime();
                     return super.requestStream(interaction.outbound)
+                            .doOnNext(interaction::recordResponse)
                             .doOnError(interaction.span::error)
                             .doFinally(signal -> endClient(interaction, startNanos, signal));
                 });
@@ -167,6 +187,7 @@ public final class RSocketTracingInterceptor implements RSocketInterceptor {
             Interaction interaction = startServer(payload);
             long startNanos = System.nanoTime();
             return super.requestStream(payload)
+                    .doOnNext(interaction::recordResponse)
                     .doOnError(interaction.span::error)
                     .doFinally(signal -> endServer(interaction, startNanos, signal))
                     .contextWrite(ctx -> ctx.put(TraceContextThreadLocalAccessor.KEY, interaction.context));
