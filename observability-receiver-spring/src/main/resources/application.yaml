@@ -1,0 +1,17 @@
+debug: false
+logging:
+  level:
+    org:
+      springframework: INFO
+    root: INFO
+spring:
+  application:
+    name: observability-receiver
+server:
+  port: ${RECEIVER_PORT:9090}
+receiver:
+  store:
+    max-metrics-records: ${RECEIVER_MAX_METRICS_RECORDS:500}
+    max-span-exports: ${RECEIVER_MAX_SPAN_EXPORTS:500}
+  trace:
+    slow-threshold-millis: ${RECEIVER_SLOW_THRESHOLD_MILLIS:500}
