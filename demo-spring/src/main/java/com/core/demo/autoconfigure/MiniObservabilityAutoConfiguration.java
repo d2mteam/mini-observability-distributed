@@ -1,10 +1,10 @@
 package com.core.demo.autoconfigure;
 
-import com.core.demo.StompTracingChannelInterceptor;
-import com.core.demo.TraceContextHandshakeInterceptor;
-import com.core.demo.TracingClientInterceptor;
-import com.core.demo.TracingFilter;
-import com.core.demo.WebSocketSessionMetricsListener;
+import com.core.demo.http.TracingClientInterceptor;
+import com.core.demo.http.TracingFilter;
+import com.core.demo.websocket.StompTracingChannelInterceptor;
+import com.core.demo.websocket.TraceContextHandshakeInterceptor;
+import com.core.demo.websocket.WebSocketSessionMetricsListener;
 import com.core.export.ServiceIdentity;
 import com.core.export.metrics.ConsoleMetricsExportSink;
 import com.core.export.metrics.ElasticsearchMetricsExportSink;

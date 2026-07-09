@@ -1,6 +1,6 @@
 package com.core.demo.autoconfigure;
 
-import com.core.demo.TracingClientInterceptor;
+import com.core.demo.http.TracingClientInterceptor;
 import com.core.export.ServiceIdentity;
 import com.core.export.tracing.SpanExporter;
 import com.core.metrics.MetricsRegistry;

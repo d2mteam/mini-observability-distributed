@@ -1,6 +1,6 @@
 package com.core.demo.autoconfigure;
 
-import com.core.demo.JdbcTracingDataSource;
+import com.core.demo.jdbc.JdbcTracingDataSource;
 import com.core.metrics.MetricsRegistry;
 import com.core.tracing.Tracer;
 import org.springframework.beans.BeansException;
